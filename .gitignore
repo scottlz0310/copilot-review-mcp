@@ -1,0 +1,41 @@
+# Build output
+/bin/
+/out/
+*.test
+*.exe
+
+# Coverage
+coverage.out
+*.lcov
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / runtime
+.env
+.env.*
+!.env.template
+*.log
+!docs/observations/*.log
+
+# Local SQLite data
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Claude Code
+.claude/

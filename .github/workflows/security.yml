@@ -1,0 +1,75 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  filesystem-scan:
+    name: Filesystem Scan (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs-results.sarif
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          scanners: vuln,secret,misconfig
+          skip-dirs: .git
+          limit-severities-for-sarif: true
+          trivyignores: .trivyignore
+
+      - name: Upload Trivy filesystem results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+
+  image-scan:
+    name: Container Image Scan (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: イメージビルド
+        run: docker build -t copilot-review-mcp:security-scan .
+
+      - name: Trivy イメージスキャン
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: copilot-review-mcp:security-scan
+          format: sarif
+          output: trivy-image-results.sarif
+          vuln-type: os,library
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+          trivyignores: .trivyignore
+
+      - name: Upload Trivy image results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-image-results.sarif

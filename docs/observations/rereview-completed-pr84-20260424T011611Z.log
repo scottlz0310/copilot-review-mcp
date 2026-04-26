@@ -1,0 +1,89 @@
+─────────────────────────────────────────────
+verify-review-status  scottlz0310/Mcp-Docker #84
+timestamp: 2026-04-24T01:16:11Z
+─────────────────────────────────────────────
+
+## REST: requested_reviewers
+{"teams":[],"users":[]}
+
+## REST: reviews (copilot)
+[
+  {
+    "id": "4167147795",
+    "login": "copilot-pull-request-reviewer[bot]",
+    "state": "COMMENTED",
+    "submitted_at": "2026-04-24T01:01:30Z"
+  },
+  {
+    "id": "4167198435",
+    "login": "copilot-pull-request-reviewer[bot]",
+    "state": "COMMENTED",
+    "submitted_at": "2026-04-24T01:14:37Z"
+  }
+]
+
+## REST: timeline events
+[
+  {
+    "event": "ready_for_review",
+    "created_at": "2026-04-24T00:59:02Z",
+    "actor": "scottlz0310-user",
+    "reviewer": null,
+    "body_head": null
+  },
+  {
+    "event": "review_requested",
+    "created_at": "2026-04-24T00:59:02Z",
+    "actor": "scottlz0310-user",
+    "reviewer": "Copilot",
+    "body_head": null
+  },
+  {
+    "event": "copilot_work_started",
+    "created_at": "2026-04-24T00:59:29Z",
+    "actor": "scottlz0310-user",
+    "reviewer": null,
+    "body_head": null
+  },
+  {
+    "event": "reviewed",
+    "created_at": null,
+    "actor": null,
+    "reviewer": null,
+    "body_head": "## Pull request overview\n\nCopilot Review の状態判定（`get_copilot_review_status`）の前提条件を実測で検証するために、GitHub API の複数エンドポイントを横断取得する…"
+  },
+  {
+    "event": "review_requested",
+    "created_at": "2026-04-24T01:11:32Z",
+    "actor": "scottlz0310-user",
+    "reviewer": "Copilot",
+    "body_head": null
+  },
+  {
+    "event": "copilot_work_started",
+    "created_at": "2026-04-24T01:11:59Z",
+    "actor": "scottlz0310-user",
+    "reviewer": null,
+    "body_head": null
+  },
+  {
+    "event": "reviewed",
+    "created_at": null,
+    "actor": null,
+    "reviewer": null,
+    "body_head": "## Pull request overview\n\nCopilot reviewed 3 out of 3 changed files in this pull request and generated 3 comments.\n\n\n\n…"
+  }
+]
+
+## GraphQL: timelineItems (first:100 — results may be truncated for very active PRs)
+[{"actor":"scottlz0310-user","createdAt":"2026-04-24T00:59:02Z","reviewer":"copilot-pull-request-reviewer","reviewerType":"Bot","type":"ReviewRequestedEvent"},{"author":"copilot-pull-request-reviewer","body_head":"Pull request overview\nCopilot Review の状態判定（get_copilot_review_status）の前提条件を実測で検証するために、GitHub API の複数エンドポイントを横断取得する観測スクリプ…","createdAt":"2026-04-24T01:01:29Z","databaseId":"4167147795","state":"COMMENTED","submittedAt":"2026-04-24T01:01:30Z","type":"PullRequestReview"},{"actor":"scottlz0310-user","createdAt":"2026-04-24T01:11:32Z","reviewer":"copilot-pull-request-reviewer","reviewerType":"Bot","type":"ReviewRequestedEvent"},{"author":"copilot-pull-request-reviewer","body_head":"Pull request overview\nCopilot reviewed 3 out of 3 changed files in this pull request and generated 3 comments.…","createdAt":"2026-04-24T01:14:35Z","databaseId":"4167198435","state":"COMMENTED","submittedAt":"2026-04-24T01:14:37Z","type":"PullRequestReview"}]
+
+## GraphQL: reviewDecision / latestOpinionatedReviews / reviewRequests
+{"latestOpinionatedReviews":[],"reviewDecision":null,"reviewRequests":[]}
+
+## Check Runs (copilot)
+[]
+
+─────────────────────────────────────────────
+done. timestamp: 2026-04-24T01:16:16Z
+─────────────────────────────────────────────
