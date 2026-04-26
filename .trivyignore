@@ -1,0 +1,3 @@
+# Trivy ignore file for unfixable vulnerabilities
+# Format: CVE-ID
+# 必要に応じて追加。Mcp-Docker から引き継ぐ既知の例外は当面なし。

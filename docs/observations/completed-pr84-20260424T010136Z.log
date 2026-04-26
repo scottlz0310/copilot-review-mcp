@@ -1,0 +1,26 @@
+─────────────────────────────────────────────
+verify-review-status  scottlz0310/Mcp-Docker #84
+timestamp: 2026-04-24T01:01:36Z
+─────────────────────────────────────────────
+
+## REST: requested_reviewers
+{"teams":[],"users":[]}
+
+## REST: reviews (copilot)
+[{"id":"4167147795","login":"copilot-pull-request-reviewer[bot]","state":"COMMENTED","submitted_at":"2026-04-24T01:01:30Z"}]
+
+## REST: timeline events
+[{"actor":"scottlz0310-user","body_head":null,"created_at":"2026-04-24T00:59:02Z","event":"ready_for_review","reviewer":null},{"actor":"scottlz0310-user","body_head":null,"created_at":"2026-04-24T00:59:02Z","event":"review_requested","reviewer":"Copilot"},{"actor":"scottlz0310-user","body_head":null,"created_at":"2026-04-24T00:59:29Z","event":"copilot_work_started","reviewer":null},{"actor":null,"body_head":"## Pull request overview\n\nCopilot Review の状態判定（`get_copilot_review_status`）の前提条件を実測で検証するために、GitHub API の複数エンドポイントを横断取得する…","created_at":null,"event":"reviewed","reviewer":null}]
+
+## GraphQL: timelineItems
+[{"actor":"scottlz0310-user","createdAt":"2026-04-24T00:59:02Z","reviewer":"copilot-pull-request-reviewer","reviewerType":"Bot","type":"ReviewRequestedEvent"},{"author":"copilot-pull-request-reviewer","body_head":"Pull request overview\nCopilot Review の状態判定（get_copilot_review_status）の前提条件を実測で検証するために、GitHub API の複数エンドポイントを横断取得する観測スクリプ…","createdAt":"2026-04-24T01:01:29Z","databaseId":"4167147795","state":"COMMENTED","submittedAt":"2026-04-24T01:01:30Z","type":"PullRequestReview"}]
+
+## GraphQL: reviewDecision / latestOpinionatedReviews / reviewRequests
+{"latestOpinionatedReviews":[],"reviewDecision":null,"reviewRequests":[]}
+
+## Check Runs (copilot)
+[]
+
+─────────────────────────────────────────────
+done. timestamp: 2026-04-24T01:01:41Z
+─────────────────────────────────────────────
