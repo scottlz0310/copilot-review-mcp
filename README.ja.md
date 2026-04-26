@@ -32,7 +32,7 @@ OAuth ファサードを内蔵しており、Streamable HTTP transport で `clau
 | `reply_and_resolve_review_thread` | 返信→解決を順次実行 |
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 
-詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。
+セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。
 
 ## クイックスタート（Docker）
 
