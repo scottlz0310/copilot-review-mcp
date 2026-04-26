@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v72/github"
+	"github.com/google/go-github/v85/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -140,7 +140,7 @@ func (c *Client) GetReviewData(ctx context.Context, owner, repo string, prNumber
 	data := &ReviewData{}
 
 	// Fetch current requested reviewers.
-	reviewers, resp, err := c.gh.PullRequests.ListReviewers(ctx, owner, repo, prNumber, nil)
+	reviewers, resp, err := c.gh.PullRequests.ListReviewers(ctx, owner, repo, prNumber)
 	if err != nil {
 		return nil, err
 	}
