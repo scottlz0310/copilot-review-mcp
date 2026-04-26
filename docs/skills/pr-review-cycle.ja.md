@@ -23,8 +23,8 @@ PR レビュー対応サイクルを自律実行するスキル。
 
 | サーバー | 役割 | 参照 |
 |---------|------|------|
-| `copilot-review-mcp` | Copilot レビュー watch・スレッド操作 | [README.md](../../README.md) |
-| GitHub MCP サーバー | Issue/PR コメント投稿 | [README.md](../../README.md) |
+| `copilot-review-mcp` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
+| GitHub MCP サーバー | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
 
 ### プレースホルダーの読み替え
 
