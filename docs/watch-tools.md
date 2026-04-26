@@ -1,6 +1,6 @@
 # copilot-review-mcp Watch ツールフロー
 
-`services/copilot-review-mcp` の主経路は、blocking wait ではなく async watch です。
+このリポジトリの主経路は、blocking wait ではなく async watch です。
 このドキュメントは #67 時点の推奨フローと各 tool の役割をまとめます。
 
 ## 推奨フロー

@@ -139,7 +139,7 @@ func waitHandler(
 			entry, err := db.GetLatest(in.Owner, in.Repo, in.PR)
 			if err != nil {
 				if isCancellation(err) {
-					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), err
+					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), nil
 				}
 				return nil, WaitOutput{}, err
 			}
@@ -178,8 +178,8 @@ func waitHandler(
 		}
 
 		// All polls exhausted — check context before reporting TIMEOUT.
-		if err := ctx.Err(); err != nil {
-			return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, in.MaxPolls, time.Since(start)), err
+		if ctx.Err() != nil {
+			return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, in.MaxPolls, time.Since(start)), nil
 		}
 		rs := buildStatusOutput(lastData, lastEntry, lastStatus)
 		return nil, WaitOutput{

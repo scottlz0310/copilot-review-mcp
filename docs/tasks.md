@@ -16,7 +16,7 @@ LLM 向けの async watch + notification モデルへ置き換える大きめの
 
 設計メモ:
 
-`docs/design/copilot-review-watch-redesign.md`
+`docs/design/watch-redesign.md`
 
 現在の watch tool 運用メモ:
 
@@ -50,7 +50,7 @@ review 反映メモ:
 - TIMEOUT 後に不要な追加 API コール（`GetReviewData` が重複実行される）を除去する
 - コンテキストキャンセル時に進捗情報（PollsDone / WaitedSeconds）が失われる問題を修正する
 
-> 対象ファイル: `services/copilot-review-mcp/internal/tools/wait.go`
+> 対象ファイル: `internal/tools/wait.go`
 
 ---
 
@@ -61,7 +61,7 @@ review 反映メモ:
 - `ci_all_success` が手動入力依存のため誤判定リスクがある（GitHub Checks API 自動取得を検討）
 - `last_comment_at` が省略されると `terminateCond2` が常に無効になる（スレッドから自動算出を検討）
 
-> 対象ファイル: `services/copilot-review-mcp/internal/tools/cycle.go`
+> 対象ファイル: `internal/tools/cycle.go`
 
 ---
 
@@ -72,7 +72,7 @@ review 反映メモ:
 `blockingThreadCount` フィールドが常に `0` を返すバグだが、#58 の設計変更によってこのフィールド自体が廃止される可能性がある。
 `blockingCount` の責務をMCPサーバーが持つか否かの方針が固まってから修正または廃止を決定する。
 
-> 対象ファイル: `services/copilot-review-mcp/internal/tools/status.go`, `wait.go`
+> 対象ファイル: `internal/tools/status.go`, `wait.go`
 
 ---
 
@@ -85,7 +85,7 @@ review 反映メモ:
 - `get_pr_review_cycle_status` の分類サマリ関連フィールドと `blockingCount` 計算をMCPサーバーから除去し、LLMがルールファイルに基づいて判断する設計に変更する
 - Step 3（#55）の `blockingThreadCount` 廃止もここで合わせて対応する
 
-> 対象ファイル: `services/copilot-review-mcp/internal/tools/threads.go`, `cycle.go`, `status.go`, `wait.go`
+> 対象ファイル: `internal/tools/threads.go`, `cycle.go`, `status.go`, `wait.go`
 
 **TODO（ルールファイル確定後に記入）:**
 - [ ] ルールファイルのパス:
