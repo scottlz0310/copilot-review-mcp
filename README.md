@@ -1,40 +1,42 @@
 # copilot-review-mcp
 
-GitHub Copilot の PR レビューサイクルを管理する MCP（Model Context Protocol）サーバー。レビュー依頼・完了検知・staleness 判定・スレッド返信／解決までを LLM 向けの async watch + notification モデルで提供する。
+[日本語](README.ja.md)
 
-OAuth ファサードを内蔵しており、Streamable HTTP transport で `claude.ai`、Claude Code、VS Code などの MCP クライアントから直接接続できる。
+An MCP (Model Context Protocol) server that manages GitHub Copilot PR review cycles. Provides review request, completion detection, staleness detection, and thread reply/resolve through an **async watch + notification** model designed for LLM agents.
 
-## 特徴
+Built-in OAuth facade enables direct connections from MCP clients such as `claude.ai`, Claude Code, and VS Code via Streamable HTTP transport.
 
-- **async watch + notification** ベース。`start_copilot_review_watch` で background watch を開始し、`get_copilot_review_watch_status` の cheap read と `notifications/resources/updated` で進捗を取る
-- **GraphQL ベースの Copilot review request**。REST `requested_reviewers` が bot actor を黙って無視する問題を回避する
-- **PR レビュースレッド単位の操作**。`PRRT_xxx` ノード ID で reply / resolve / reply+resolve を行う
-- **OAuth Authorization Code flow** を MCP クライアント向けに提供（GitHub OAuth App をバックエンドに使用）
-- **Stateful session**。`Mcp-Session-Id` を GitHub login にバインドし、idle timeout で自動 prune
-- **SQLite による watch state 永続化**。プロセス再起動後の active watch は `STALE` として観測できる
+## Features
 
-## 提供ツール
+- **Async watch + notification** based. Start a background watch with `start_copilot_review_watch`, then track progress via the cheap `get_copilot_review_watch_status` read and `notifications/resources/updated` events.
+- **GraphQL-based Copilot review request**. Avoids the issue where REST `requested_reviewers` silently ignores bot actors.
+- **Per-thread review operations**. Reply, resolve, or reply+resolve individual threads using `PRRT_xxx` node IDs.
+- **OAuth Authorization Code flow** for MCP clients, backed by a GitHub OAuth App.
+- **Stateful sessions**. `Mcp-Session-Id` is bound to a GitHub login; sessions are automatically pruned on idle timeout.
+- **SQLite-persisted watch state**. Active watches that survive a process restart are observable as `STALE`.
 
-| ツール | 用途 |
+## Tools
+
+| Tool | Description |
 |---|---|
-| `request_copilot_review` | PR に Copilot レビューを依頼する |
-| `get_copilot_review_status` | GitHub から即時 snapshot を取る |
-| `start_copilot_review_watch` | background watch を開始（推奨経路の入口） |
-| `get_copilot_review_watch_status` | watch の現在状態を cheap read |
-| `list_copilot_review_watches` | 自分の active / recent watch 一覧 |
-| `cancel_copilot_review_watch` | watch を停止 |
-| `get_pr_review_cycle_status` | レビューサイクル全体の状態と次のアクション提案 |
-| `get_review_threads` | レビュースレッド一覧（Raw データ。分類は呼び出し元 LLM 側で行う） |
-| `reply_to_review_thread` | スレッドに返信 |
-| `resolve_review_thread` | スレッドを解決済みにする |
-| `reply_and_resolve_review_thread` | 返信→解決を順次実行 |
-| `wait_for_copilot_review` | legacy blocking wait（fallback） |
+| `request_copilot_review` | Request a Copilot review on a PR |
+| `get_copilot_review_status` | Fetch an instant snapshot from GitHub |
+| `start_copilot_review_watch` | Start a background watch (recommended entry point) |
+| `get_copilot_review_watch_status` | Cheap read of the current watch state |
+| `list_copilot_review_watches` | List your active/recent watches |
+| `cancel_copilot_review_watch` | Stop a watch |
+| `get_pr_review_cycle_status` | Overall review cycle status and next-action recommendation |
+| `get_review_threads` | List review threads (raw data; classification is left to the calling LLM) |
+| `reply_to_review_thread` | Post a reply to a thread |
+| `resolve_review_thread` | Mark a thread as resolved |
+| `reply_and_resolve_review_thread` | Reply then resolve in sequence |
+| `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 
-詳細は [docs/watch-tools.md](docs/watch-tools.md) と [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md) を参照。
+See [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md) for details.
 
-## クイックスタート（Docker）
+## Quick Start (Docker)
 
-GitHub OAuth App を作成し、Client ID / Client Secret を取得しておく（コールバック URL: `http://localhost:8083/callback`）。
+Create a GitHub OAuth App and obtain its Client ID and Client Secret (callback URL: `http://localhost:8083/callback`).
 
 ```bash
 docker run --rm -p 127.0.0.1:8083:8083 \
@@ -45,43 +47,43 @@ docker run --rm -p 127.0.0.1:8083:8083 \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
 
-MCP クライアント（Claude Code 等）には `http://localhost:8083/mcp` を OAuth 対応 MCP サーバーとして登録する。
+Register `http://localhost:8083/mcp` as an OAuth-enabled MCP server in your MCP client (e.g. Claude Code).
 
-## 環境変数
+## Environment Variables
 
-| 変数 | 必須 | 既定値 | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | ✓ | — | GitHub OAuth App の Client ID |
-| `GITHUB_CLIENT_SECRET` | ✓ | — | GitHub OAuth App の Client Secret |
-| `BASE_URL` | | `http://localhost:8083` | MCP サーバーの公開 URL |
-| `GITHUB_OAUTH_SCOPES` | | `repo,user` | OAuth スコープ |
-| `MCP_PORT` | | `8083` | リッスンポート |
+| `GITHUB_CLIENT_ID` | ✓ | — | GitHub OAuth App Client ID |
+| `GITHUB_CLIENT_SECRET` | ✓ | — | GitHub OAuth App Client Secret |
+| `BASE_URL` | | `http://localhost:8083` | Public URL of the MCP server |
+| `GITHUB_OAUTH_SCOPES` | | `repo,user` | OAuth scopes |
+| `MCP_PORT` | | `8083` | Listen port |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
-| `SESSION_TTL_MIN` | | `10` | OAuth セッション TTL（分） |
-| `TOKEN_CACHE_TTL_MIN` | | `30` | トークン検証キャッシュ TTL（分） |
-| `TOKEN_EXPIRES_IN_SEC` | | `7776000` | クライアントへ告知するトークン有効期限（秒） |
-| `SQLITE_PATH` | | `/data/copilot-review.db` | watch state DB のパス |
-| `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
+| `SESSION_TTL_MIN` | | `10` | OAuth session TTL (minutes) |
+| `TOKEN_CACHE_TTL_MIN` | | `30` | Token validation cache TTL (minutes) |
+| `TOKEN_EXPIRES_IN_SEC` | | `7776000` | Token expiry advertised to clients (seconds) |
+| `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
+| `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
 
-## ローカル開発
+## Local Development
 
-Go 1.26+ が必要。
+Requires Go 1.26+.
 
 ```bash
-# テスト
+# Run tests
 go test ./...
 
-# ビルド
+# Build
 go build -o bin/copilot-review-mcp ./cmd/server
 
-# Dockerイメージビルド
+# Build Docker image
 docker build -t copilot-review-mcp:dev .
 ```
 
-## 履歴
+## History
 
-このリポジトリは [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/copilot-review-mcp/` を分離したもの。git 履歴は移行していない。Mcp-Docker 側の関連 PR / Issue（`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92` など）は `docs/` 配下のドキュメントから参照される。
+This repository is a split-out of `services/copilot-review-mcp/` from [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker). Git history was not migrated. Related PRs and Issues from Mcp-Docker (`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92`, etc.) are referenced in the documents under `docs/`.
 
-## ライセンス
+## License
 
-MIT License — [LICENSE](LICENSE) を参照。
+MIT License — see [LICENSE](LICENSE).
