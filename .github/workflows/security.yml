@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -57,7 +57,7 @@ jobs:
         run: docker build -t copilot-review-mcp:security-scan .
 
       - name: Trivy イメージスキャン
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: copilot-review-mcp:security-scan
           format: sarif
