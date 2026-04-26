@@ -171,12 +171,12 @@ type ResolveThreadInput struct {
 // ResolveThreadOutput is the output schema for resolve_review_thread.
 type ResolveThreadOutput struct {
 	Resolved        bool `json:"resolved"`
-	AlreadyResolved bool `json:"already_resolved,omitempty"`
+	AlreadyResolved bool `json:"alreadyResolved,omitempty"`
 }
 
 var resolveThreadTool = &mcp.Tool{
 	Name:        "resolve_review_thread",
-	Description: "指定したレビュースレッド（PRRT_xxx）を解決済みにする。すでに解決済みの場合は no-op で already_resolved: true を返す。",
+	Description: "指定したレビュースレッド（PRRT_xxx）を解決済みにする。すでに解決済みの場合は no-op で alreadyResolved: true を返す。",
 }
 
 func resolveThreadHandler(

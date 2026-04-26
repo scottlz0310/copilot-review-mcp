@@ -98,7 +98,7 @@ func waitHandler(
 						default:
 						}
 					}
-					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), ctx.Err()
+					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), nil
 				case <-timer.C:
 				}
 			}
@@ -106,7 +106,7 @@ func waitHandler(
 			data, err := ghClient.GetReviewData(ctx, in.Owner, in.Repo, in.PR)
 			if err != nil {
 				if isCancellation(err) {
-					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), err
+					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), nil
 				}
 				return nil, WaitOutput{}, err
 			}
@@ -116,7 +116,7 @@ func waitHandler(
 				entry, err := db.GetLatest(in.Owner, in.Repo, in.PR)
 				if err != nil {
 					if isCancellation(err) {
-						return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), err
+						return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), nil
 					}
 					return nil, WaitOutput{}, fmt.Errorf("failed to get latest entry (RATE_LIMITED): %w", err)
 				}

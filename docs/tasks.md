@@ -20,7 +20,7 @@ LLM 向けの async watch + notification モデルへ置き換える大きめの
 
 現在の watch tool 運用メモ:
 
-`docs/copilot-review-watch-tools.md`
+`docs/watch-tools.md`
 
 > この redesign は既存の局所修正（#55, #56, #57, #58）とは別トラックで進める想定。
 > 実装に着手する際は、`wait_for_copilot_review` 周辺の重複改修を避けるため、

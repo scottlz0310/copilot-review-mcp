@@ -101,6 +101,11 @@ func Open(path string) (*DB, error) {
 			break
 		}
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		db.Close()
+		return nil, fmt.Errorf("migration iterate table_info: %w", err)
+	}
 	if err := rows.Close(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migration close table_info rows: %w", err)

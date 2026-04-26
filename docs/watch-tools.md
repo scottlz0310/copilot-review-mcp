@@ -45,7 +45,7 @@ watch 系ツールは `recommended_next_action` と、必要に応じて `next_p
 
 ## 補足
 
-- `resource_uri` は将来の resource 公開フェーズに備えた安定 ID です。#67 時点では read/subscribe は未提供です。
+- `resource_uri` は watch の安定 ID です。`copilot-review://watch/{watch_id}` スキームで read/subscribe が利用可能です（`RegisterWatchResources` / `SubscribeHandler` 実装済み）。
 - watch state は SQLite に保存されますが、worker 自体は memory-only です。プロセス再起動後の active watch は `STALE` になります。
 - 一覧系は同一 `github_login` の watch だけを返します。
 
