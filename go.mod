@@ -3,7 +3,6 @@ module github.com/scottlz0310/copilot-review-mcp
 go 1.26.2
 
 require (
-	github.com/google/go-github/v72 v72.0.0
 	github.com/google/go-github/v85 v85.0.0
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed
