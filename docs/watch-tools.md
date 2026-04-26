@@ -1,69 +1,71 @@
-# copilot-review-mcp Watch ツールフロー
+# copilot-review-mcp Watch Tool Flow
 
-このリポジトリの主経路は、blocking wait ではなく async watch です。
-このドキュメントは #67 時点の推奨フローと各 tool の役割をまとめます。
+[日本語](watch-tools.ja.md)
 
-## 推奨フロー
+The primary path in this repository is **async watch**, not blocking wait.
+This document describes the recommended flow and the role of each tool as of issue #67.
+
+## Recommended Flow
 
 1. `get_copilot_review_status(owner, repo, pr)`
-2. status が `COMPLETED` / `BLOCKED` でなければ `start_copilot_review_watch(owner, repo, pr)`
-3. 他の作業を進める
-4. 次の判断点で `get_copilot_review_watch_status(watch_id)` を呼ぶ
-5. `watch_id` を見失ったら `list_copilot_review_watches(...)` で回復する
-6. watch が不要になったら `cancel_copilot_review_watch(...)` を呼ぶ
+2. If status is not `COMPLETED` / `BLOCKED`, call `start_copilot_review_watch(owner, repo, pr)`
+3. Continue other work
+4. At the next decision point, call `get_copilot_review_watch_status(watch_id)`
+5. If you lose track of `watch_id`, recover it with `list_copilot_review_watches(...)`
+6. When the watch is no longer needed, call `cancel_copilot_review_watch(...)`
 
-## 各ツールの役割
+## Tool Roles
 
 - `get_copilot_review_status`
-  GitHub API から即時 snapshot を取る。watch を始める前や、watch が `STALE` / `TIMEOUT` / `CANCELLED` になった後の再確認に使う。
+  Fetches an instant snapshot from the GitHub API. Use before starting a watch, or to re-check after a watch reaches `STALE` / `TIMEOUT` / `CANCELLED`.
 - `start_copilot_review_watch`
-  background watch を開始する。active watch が既にあれば idempotent に再利用する。
+  Starts a background watch. If an active watch for the same PR already exists, it is reused idempotently.
 - `get_copilot_review_watch_status`
-  ローカル state を返す cheap read。`watch_id` 優先、なければ `(owner, repo, pr)` lookup が使える。
+  A cheap read returning local state. Prefers `watch_id`; falls back to `(owner, repo, pr)` lookup.
 - `list_copilot_review_watches`
-  active / recent watch を一覧する。human debug と watch 回復用。
+  Lists active/recent watches. Used for human debugging and watch recovery.
 - `cancel_copilot_review_watch`
-  不要な active watch を止める。
+  Stops an unnecessary active watch.
 - `wait_for_copilot_review`
-  legacy fallback。host の都合で blocking wait が必要な場合だけ使う。
+  Legacy fallback. Use only when the host requires a blocking wait.
 
-## LLM 向けヒント
+## Hints for LLM Agents
 
-watch 系ツールは `recommended_next_action` と、必要に応じて `next_poll_seconds` を返します。
+Watch tools return `recommended_next_action` and, when relevant, `next_poll_seconds`.
 
 - `POLL_AFTER`
-  watch はまだ進行中。`next_poll_seconds` 秒後に同じ watch を再確認する。
+  The watch is still in progress. Re-check the same watch after `next_poll_seconds` seconds.
 - `READ_REVIEW_THREADS`
-  Copilot review が `COMPLETED` または `BLOCKED` に到達した。次は `get_review_threads` などへ進む。
+  The Copilot review has reached `COMPLETED` or `BLOCKED`. Proceed to `get_review_threads` or similar.
 - `START_NEW_WATCH`
-  現在の watch は継続しない。必要なら `get_copilot_review_status` を再確認してから、新しい watch を開始する。
-  `RATE_LIMITED` の場合は `next_poll_seconds` が再開目安になる。
+  The current watch will not continue. Re-check with `get_copilot_review_status` if needed, then start a new watch.
+  If `RATE_LIMITED`, `next_poll_seconds` indicates when to retry.
 - `REAUTH_AND_START_NEW_WATCH`
-  token の再取得後に watch を作り直す。
+  Re-acquire the token, then create a new watch.
 - `CHECK_FAILURE`
-  `last_error` / `failure_reason` を確認し、原因を解消してから次のアクションを決める。
+  Inspect `last_error` / `failure_reason`, resolve the cause, then decide the next action.
 
-## 補足
+## Notes
 
-- `resource_uri` は watch の安定 ID です。`copilot-review://watch/{watch_id}` スキームで read/subscribe が利用可能です（`RegisterWatchResources` / `SubscribeHandler` 実装済み）。
-- watch state は SQLite に保存されますが、worker 自体は memory-only です。プロセス再起動後の active watch は `STALE` になります。
-- 一覧系は同一 `github_login` の watch だけを返します。
+- `resource_uri` is the stable ID of a watch. Read/subscribe is available via the `copilot-review://watch/{watch_id}` scheme (`RegisterWatchResources` / `SubscribeHandler` implemented).
+- Watch state is persisted in SQLite, but the worker itself is memory-only. Active watches become `STALE` after a process restart.
+- List operations return only watches belonging to the same `github_login`.
 
-## Stateful Session 基盤（#64）
+## Stateful Session Foundation (#64)
 
-#64 以降、`copilot-review-mcp` の Streamable HTTP は stateless ではなく stateful session として扱います。
+Since #64, the Streamable HTTP transport of `copilot-review-mcp` is treated as stateful, not stateless.
 
-- 初回 initialize で発行された `Mcp-Session-Id` を後続 request で再利用します。
-- MCP server は request ごとに作成されず、プロセス内の長寿命 server が複数 stateful session を保持します。
-- GitHub client は長寿命 server へ閉じ込めず、各 tool request の認証済み header から作成します。
-- `Mcp-Session-Id` は GitHub login と対応付け、別 login から同じ session ID が使われた場合は拒否します。
-- idle session は server 側 timeout で閉じられます。
-- `EventStore` は memory store を使い、future resource notification / SSE replay の土台を用意しています。
+- The `Mcp-Session-Id` issued on the first `initialize` is reused by subsequent requests.
+- The MCP server is not recreated per request; a long-lived in-process server holds multiple stateful sessions.
+- GitHub clients are not tied to the long-lived server; they are created per tool request from the authenticated request headers.
+- `Mcp-Session-Id` is bound to a GitHub login; requests from a different login using the same session ID are rejected.
+- Idle sessions are closed by the server-side timeout.
+- `EventStore` uses a memory store, providing a foundation for future resource notifications and SSE replay.
 
-テスト観点:
+Test considerations:
 
-- initialize 後の複数 request が同一 stateful session と長寿命 server を再利用すること。
-- 別 GitHub login が既存 `Mcp-Session-Id` を使うと JSON error body 付きの 403 になること。
-- timeout などで server から消えた session の login binding が periodic pruning で消えること。
-- handler shutdown で active session と background watch manager が停止すること。
-- resource notification 追加時は `resources/subscribe` 済み session に `notifications/resources/updated` が届き、通知不可 host では watch status read fallback が維持されること。
+- Multiple requests after `initialize` must reuse the same stateful session and long-lived server.
+- A different GitHub login using an existing `Mcp-Session-Id` must receive a 403 with a JSON error body.
+- Login bindings for sessions that have disappeared from the server must be removed by periodic pruning.
+- Handler shutdown must stop active sessions and the background watch manager.
+- When resource notifications are added, `notifications/resources/updated` must be delivered to sessions with an active `resources/subscribe`, and watch-status read fallback must be maintained for hosts that do not support notifications.
