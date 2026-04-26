@@ -72,7 +72,9 @@ func (h *StreamableHandler) Close() {
 	}
 
 	h.closeOnce.Do(func() {
-		close(h.stopPruner)
+		if h.stopPruner != nil {
+			close(h.stopPruner)
+		}
 
 		h.mu.Lock()
 		server := h.server

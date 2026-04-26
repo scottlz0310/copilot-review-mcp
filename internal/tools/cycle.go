@@ -226,10 +226,14 @@ func cycleStatusHandler(
 			if parseErr != nil {
 				return nil, CycleStatusOutput{}, fmt.Errorf("invalid last_comment_at: must be RFC3339: %w", parseErr)
 			}
-			elapsedMinutes = int(time.Since(lastAt).Minutes())
+			if e := int(time.Since(lastAt).Minutes()); e > 0 {
+				elapsedMinutes = e
+			}
 		} else if latest := findLatestCommentAt(rawThreads); latest != nil {
 			// Auto-compute from thread comments when last_comment_at is not provided.
-			elapsedMinutes = int(time.Since(*latest).Minutes())
+			if e := int(time.Since(*latest).Minutes()); e > 0 {
+				elapsedMinutes = e
+			}
 		}
 
 		// ── Termination condition checks (used for action and notes) ─────────
