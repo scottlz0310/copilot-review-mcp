@@ -32,7 +32,7 @@ Built-in OAuth facade enables direct connections from MCP clients such as `claud
 | `reply_and_resolve_review_thread` | Reply then resolve in sequence |
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 
-See [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md) for details.
+See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md).
 
 ## Quick Start (Docker)
 

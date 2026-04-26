@@ -9,8 +9,18 @@
 
 ## [Unreleased]
 
-### 初期リリース
+## [2.5.0] - 2026-04-26
+
+### 追加
 
 - [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/copilot-review-mcp/` を独立リポジトリへ分離
-- ghcr.io への Docker イメージ公開 CI を追加
-- Mcp-Docker までの履歴は移行していない。関連する設計・経緯は `docs/` 配下を参照
+- Copilot review workflow 向けの OAuth 対応 Streamable HTTP MCP サーバーを追加
+- async watch ツール、review thread の reply/resolve ツール、`pr-review-cycle` skill テンプレートを追加
+- SQLite による watch state 永続化と、プロセス再起動後の stale watch 検知を追加
+- README、changelog、watch tool docs、skill docs、usage docs を英日バイリンガル化
+- test、scan、build、ghcr.io への Docker image 公開 CI を追加
+
+### 補足
+
+- この独立リポジトリでは、Mcp-Docker 時代の `copilot-review-mcp` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
+- 関連する設計・移行経緯は `docs/` 配下を参照。
