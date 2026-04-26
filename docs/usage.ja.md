@@ -231,7 +231,7 @@ cp docs/skills/pr-review-cycle.ja.md ~/.claude/skills/pr-review-cycle/SKILL.md
 英語版を使う場合:
 
 ```bash
-cp docs/skills/pr-review-cycle.md ~/.codex/skills/pr-review-cycle/SKILL.md
+cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
 ```
 
 コピー後、利用中のクライアントで tool prefix が異なる場合は skill 内のプレースホルダーを修正する。

@@ -231,7 +231,7 @@ cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
 Use the Japanese template if preferred:
 
 ```bash
-cp docs/skills/pr-review-cycle.ja.md ~/.codex/skills/pr-review-cycle/SKILL.md
+cp docs/skills/pr-review-cycle.ja.md ~/.claude/skills/pr-review-cycle/SKILL.md
 ```
 
 After copying, edit the placeholders in the skill if your client exposes different tool prefixes:
