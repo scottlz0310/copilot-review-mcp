@@ -16,6 +16,9 @@ import (
 	"github.com/scottlz0310/copilot-review-mcp/internal/store"
 )
 
+// ErrManagerClosed is returned by Start when the Manager has been closed.
+var ErrManagerClosed = errors.New("watch manager is closed")
+
 const defaultPollInterval = 90 * time.Second
 const defaultPollTimeout = 30 * time.Second
 const defaultMaxWatchDuration = 2 * time.Hour
@@ -284,7 +287,7 @@ func (m *Manager) Start(in StartInput) (Snapshot, bool, error) {
 	defer m.mu.Unlock()
 
 	if m.closed {
-		return Snapshot{}, false, fmt.Errorf("watch manager is closed")
+		return Snapshot{}, false, ErrManagerClosed
 	}
 
 	if id, ok := m.activeByKey[key]; ok {

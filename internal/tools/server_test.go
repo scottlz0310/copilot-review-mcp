@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,11 +42,8 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 		Repo:  "demo",
 		PR:    1,
 	})
-	if err == nil {
-		t.Fatal("Start() after Close() = nil error, want watch manager is closed")
-	}
-	if err.Error() != "watch manager is closed" {
-		t.Fatalf("Start() after Close() error = %q, want %q", err.Error(), "watch manager is closed")
+	if !errors.Is(err, watch.ErrManagerClosed) {
+		t.Fatalf("Start() after Close() error = %v, want %v", err, watch.ErrManagerClosed)
 	}
 }
 
