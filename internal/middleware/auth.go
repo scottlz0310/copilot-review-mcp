@@ -50,6 +50,10 @@ func Auth(v TokenValidator, mode AuthMode) func(http.Handler) http.Handler {
 					return
 				}
 				token := extractBearer(r)
+				if token == "" {
+					writeUnauthorized(w, "missing_token")
+					return
+				}
 				ctx := context.WithValue(r.Context(), ContextKeyLogin, login)
 				ctx = context.WithValue(ctx, ContextKeyToken, token)
 				next.ServeHTTP(w, r.WithContext(ctx))

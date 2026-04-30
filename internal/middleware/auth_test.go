@@ -89,11 +89,9 @@ func TestAuth_GatewayMode(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "valid proxy identity without bearer",
-			proxyLogin:     "bob",
-			wantStatus:     http.StatusOK,
-			wantLogin:      "bob",
-			wantTokenInCtx: "",
+			name:       "valid proxy identity without bearer returns 401",
+			proxyLogin: "bob",
+			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "valid proxy identity with bearer token propagated to context",

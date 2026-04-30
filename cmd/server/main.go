@@ -49,12 +49,26 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// OAuth façade endpoints (no auth required)
-	mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.Discovery)
-	mux.HandleFunc("GET /authorize", oauthHandler.Authorize)
-	mux.HandleFunc("GET /callback", oauthHandler.Callback)
-	mux.HandleFunc("POST /token", oauthHandler.Token)
-	mux.HandleFunc("POST /register", oauthHandler.Register)
+	if cfg.authMode == middleware.AuthModeGateway {
+		// In gateway mode, OAuth endpoints are unused; return 410 Gone with an explanation.
+		goneHandler := func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusGone)
+			_, _ = fmt.Fprintln(w, `{"error":"oauth_unavailable","detail":"OAuth endpoints are disabled in AUTH_MODE=gateway"}`)
+		}
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
+		mux.HandleFunc("GET /authorize", goneHandler)
+		mux.HandleFunc("GET /callback", goneHandler)
+		mux.HandleFunc("POST /token", goneHandler)
+		mux.HandleFunc("POST /register", goneHandler)
+	} else {
+		// OAuth façade endpoints (no auth required)
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.Discovery)
+		mux.HandleFunc("GET /authorize", oauthHandler.Authorize)
+		mux.HandleFunc("GET /callback", oauthHandler.Callback)
+		mux.HandleFunc("POST /token", oauthHandler.Token)
+		mux.HandleFunc("POST /register", oauthHandler.Register)
+	}
 
 	// Health check (no auth required)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
