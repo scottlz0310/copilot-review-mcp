@@ -41,16 +41,34 @@ func main() {
 		ExpiresIn:          time.Duration(cfg.tokenExpiresInSec) * time.Second,
 	})
 
-	authMiddleware := middleware.Auth(oauthHandler)
+	if cfg.authMode == middleware.AuthModeGateway {
+		slog.Info("auth mode: gateway (trusting X-Authenticated-User header)")
+	}
+
+	authMiddleware := middleware.Auth(oauthHandler, cfg.authMode)
 
 	mux := http.NewServeMux()
 
-	// OAuth façade endpoints (no auth required)
-	mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.Discovery)
-	mux.HandleFunc("GET /authorize", oauthHandler.Authorize)
-	mux.HandleFunc("GET /callback", oauthHandler.Callback)
-	mux.HandleFunc("POST /token", oauthHandler.Token)
-	mux.HandleFunc("POST /register", oauthHandler.Register)
+	if cfg.authMode == middleware.AuthModeGateway {
+		// In gateway mode, OAuth endpoints are unused; return 410 Gone with an explanation.
+		goneHandler := func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusGone)
+			_, _ = fmt.Fprintln(w, `{"error":"oauth_unavailable","detail":"OAuth endpoints are disabled in AUTH_MODE=gateway"}`)
+		}
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
+		mux.HandleFunc("GET /authorize", goneHandler)
+		mux.HandleFunc("GET /callback", goneHandler)
+		mux.HandleFunc("POST /token", goneHandler)
+		mux.HandleFunc("POST /register", goneHandler)
+	} else {
+		// OAuth façade endpoints (no auth required)
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.Discovery)
+		mux.HandleFunc("GET /authorize", oauthHandler.Authorize)
+		mux.HandleFunc("GET /callback", oauthHandler.Callback)
+		mux.HandleFunc("POST /token", oauthHandler.Token)
+		mux.HandleFunc("POST /register", oauthHandler.Register)
+	}
 
 	// Health check (no auth required)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +106,7 @@ func main() {
 type config struct {
 	githubClientID         string
 	githubClientSecret     string
+	authMode               middleware.AuthMode
 	baseURL                string
 	oauthScopes            string
 	port                   string
@@ -100,9 +119,26 @@ type config struct {
 }
 
 func loadConfig() config {
+	mode := middleware.AuthMode(getEnv("AUTH_MODE", string(middleware.AuthModeStandalone)))
+	if mode != middleware.AuthModeStandalone && mode != middleware.AuthModeGateway {
+		slog.Error("invalid AUTH_MODE value", "value", mode, "allowed", []string{string(middleware.AuthModeStandalone), string(middleware.AuthModeGateway)})
+		os.Exit(1)
+	}
+
+	var clientID, clientSecret string
+	if mode == middleware.AuthModeGateway {
+		// In gateway mode, GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are not required.
+		clientID = getEnv("GITHUB_CLIENT_ID", "")
+		clientSecret = getEnv("GITHUB_CLIENT_SECRET", "")
+	} else {
+		clientID = mustEnv("GITHUB_CLIENT_ID")
+		clientSecret = mustEnv("GITHUB_CLIENT_SECRET")
+	}
+
 	c := config{
-		githubClientID:         mustEnv("GITHUB_CLIENT_ID"),
-		githubClientSecret:     mustEnv("GITHUB_CLIENT_SECRET"),
+		githubClientID:         clientID,
+		githubClientSecret:     clientSecret,
+		authMode:               mode,
 		baseURL:                getEnv("BASE_URL", "http://localhost:8083"),
 		oauthScopes:            getEnv("GITHUB_OAUTH_SCOPES", "repo,user"),
 		port:                   getEnv("MCP_PORT", "8083"),

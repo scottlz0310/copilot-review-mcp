@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AUTH_MODE=gateway` support: when set to `gateway`, the auth middleware trusts the `X-Authenticated-User` header injected by an upstream proxy (e.g. mcp-gateway) and skips GitHub API token validation, eliminating double-validation overhead
+- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are no longer required when `AUTH_MODE=gateway`
+
 ## [2.5.0] - 2026-04-26
 
 ### Added
