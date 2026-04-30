@@ -9,6 +9,11 @@
 
 ## [Unreleased]
 
+### 追加
+
+- `AUTH_MODE=gateway` 対応: `gateway` に設定すると、auth ミドルウェアが上流プロキシ（例: mcp-gateway）から注入された `X-Authenticated-User` ヘッダーを信頼し、GitHub API によるトークン検証をスキップする（二重検証の排除）
+- `AUTH_MODE=gateway` 時は `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` が不要になった
+
 ## [2.5.0] - 2026-04-26
 
 ### 追加
