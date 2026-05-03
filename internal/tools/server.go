@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -27,19 +28,23 @@ const (
 	mcpSessionIDHeader              = "Mcp-Session-Id"
 	sessionUserMismatchError        = "session_user_mismatch"
 	sessionTimeoutEnv               = "MCP_SESSION_TIMEOUT_MIN"
+	// maxSessionTimeoutMinutes is the largest minute value that fits in a
+	// time.Duration (int64 nanoseconds). Larger inputs would overflow and wrap
+	// to a negative/garbled duration, so we treat them as invalid.
+	maxSessionTimeoutMinutes = math.MaxInt64 / int64(time.Minute)
 )
 
 // resolveStreamableSessionTimeout returns the idle timeout used for Streamable
 // HTTP sessions. The value is read from MCP_SESSION_TIMEOUT_MIN (minutes);
 // a value of 0 disables idle eviction (SDK semantics: idle sessions are never
-// closed). Negative or unparseable values fall back to the default.
+// closed). Negative, overflowing, or unparseable values fall back to the default.
 func resolveStreamableSessionTimeout(getenv func(string) string) time.Duration {
 	raw := strings.TrimSpace(getenv(sessionTimeoutEnv))
 	if raw == "" {
 		return defaultStreamableSessionTimeout
 	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || n < 0 {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 || n > maxSessionTimeoutMinutes {
 		slog.Warn("invalid MCP_SESSION_TIMEOUT_MIN; falling back to default",
 			"value", raw,
 			"default_minutes", int(defaultStreamableSessionTimeout/time.Minute))
@@ -197,7 +202,7 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInva
 	}
 	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
 	if sessionTimeout == 0 {
-		slog.Info("streamable HTTP session idle timeout disabled (idle sessions never expire)")
+		slog.Warn("streamable HTTP session idle timeout disabled — SDK will never prune idle sessions; ensure clients send DELETE on shutdown or memory will grow unbounded")
 	} else {
 		slog.Info("streamable HTTP session idle timeout configured",
 			"minutes", int(sessionTimeout/time.Minute))

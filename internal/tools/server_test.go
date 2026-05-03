@@ -186,6 +186,21 @@ func TestResolveStreamableSessionTimeout(t *testing.T) {
 			env:  map[string]string{sessionTimeoutEnv: "abc"},
 			want: defaultStreamableSessionTimeout,
 		},
+		{
+			name: "max valid minute boundary",
+			env:  map[string]string{sessionTimeoutEnv: "153722867"},
+			want: time.Duration(153722867) * time.Minute,
+		},
+		{
+			name: "overflowing minutes fall back to default",
+			env:  map[string]string{sessionTimeoutEnv: "153722868"},
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "huge value falls back to default",
+			env:  map[string]string{sessionTimeoutEnv: "99999999999999999999"},
+			want: defaultStreamableSessionTimeout,
+		},
 	}
 
 	for _, tt := range tests {
