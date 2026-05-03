@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `AUTH_MODE=gateway` support: when set to `gateway`, the auth middleware trusts the `X-Authenticated-User` header injected by an upstream proxy (e.g. mcp-gateway) and skips GitHub API token validation, eliminating double-validation overhead
 - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are no longer required when `AUTH_MODE=gateway`
-- `MCP_SESSION_TIMEOUT_MIN` environment variable to configure the Streamable HTTP session idle timeout (default `30`, set `0` to never expire idle sessions). Mitigates `session not found` errors observed after ~30 minutes of idle time when running behind `mcp-gateway` (#14)
+- `MCP_SESSION_TIMEOUT_MIN` environment variable to configure the Streamable HTTP session idle timeout. **Default changed to `0` (idle sessions are never closed)** to fix the `session not found` failure mode observed after ~30 minutes of idle time behind `mcp-gateway` (#14). Operators who prefer eviction can set a positive value (e.g. `1440` for 24h); see README for the memory-growth trade-off when clients disappear without sending `DELETE`.
 
 ## [2.5.0] - 2026-04-26
 

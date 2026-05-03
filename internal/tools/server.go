@@ -23,7 +23,13 @@ import (
 var schemaCache = mcp.NewSchemaCache()
 
 const (
-	defaultStreamableSessionTimeout = 30 * time.Minute
+	// defaultStreamableSessionTimeout = 0 means the SDK does not evict idle
+	// sessions. This avoids the `session not found` failure reported in #14
+	// when a client or upstream proxy keeps a Mcp-Session-Id across long
+	// idle periods. Operators who need eviction can set MCP_SESSION_TIMEOUT_MIN
+	// to a positive value; see README for the memory-growth trade-off when
+	// clients disappear without sending DELETE.
+	defaultStreamableSessionTimeout = time.Duration(0)
 	defaultSessionPruneInterval     = 5 * time.Minute
 	mcpSessionIDHeader              = "Mcp-Session-Id"
 	sessionUserMismatchError        = "session_user_mismatch"

@@ -13,7 +13,7 @@
 
 - `AUTH_MODE=gateway` 対応: `gateway` に設定すると、auth ミドルウェアが上流プロキシ（例: mcp-gateway）から注入された `X-Authenticated-User` ヘッダーを信頼し、GitHub API によるトークン検証をスキップする（二重検証の排除）
 - `AUTH_MODE=gateway` 時は `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` が不要になった
-- Streamable HTTP セッションの idle timeout を設定する `MCP_SESSION_TIMEOUT_MIN` 環境変数を追加（既定 `30`、`0` で無期限）。`mcp-gateway` 経由で 30 分前後 idle 後に発生していた `session not found` の対策（#14）
+- Streamable HTTP セッションの idle timeout を設定する `MCP_SESSION_TIMEOUT_MIN` 環境変数を追加。**既定値を `0`（idle で閉じない）に変更**し、`mcp-gateway` 経由で 30 分前後 idle 後に発生していた `session not found` を解消（#14）。eviction が必要な運用では正の値（例: 24 時間なら `1440`）を指定する。`DELETE` を送らずに消えたクライアントの session が残るメモリ増加トレードオフは README 参照。
 
 ## [2.5.0] - 2026-04-26
 
