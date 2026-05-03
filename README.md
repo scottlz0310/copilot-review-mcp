@@ -64,6 +64,7 @@ Register `http://localhost:8083/mcp` as an OAuth-enabled MCP server in your MCP 
 | `TOKEN_EXPIRES_IN_SEC` | | `7776000` | Token expiry advertised to clients (seconds) |
 | `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
+| `MCP_SESSION_TIMEOUT_MIN` | | `0` | Idle timeout for Streamable HTTP sessions (minutes). After this period without any HTTP request from a client, the session is closed and subsequent requests with the stale `Mcp-Session-Id` get `404 session not found`. The default `0` disables idle eviction so long-lived clients (Claude Code / IDE / `mcp-gateway`) do not hit the failure mode in #14. Trade-off: orphaned sessions (clients that disappear without sending `DELETE`) remain in memory until process shutdown — set a positive value (e.g. `1440` for 24h) if memory growth is a concern. |
 
 ## Local Development
 
