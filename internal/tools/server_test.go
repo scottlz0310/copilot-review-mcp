@@ -213,6 +213,50 @@ func TestResolveStreamableSessionTimeout(t *testing.T) {
 	}
 }
 
+func TestBuildStreamableHandlerPropagatesSessionTimeout(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want time.Duration
+	}{
+		{
+			name: "unset uses default",
+			env:  "",
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "explicit override",
+			env:  "5",
+			want: 5 * time.Minute,
+		},
+		{
+			name: "zero disables idle eviction",
+			env:  "0",
+			want: 0,
+		},
+		{
+			name: "invalid value falls back to default",
+			env:  "abc",
+			want: defaultStreamableSessionTimeout,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(sessionTimeoutEnv, tt.env)
+
+			db := openServerTestDB(t)
+			handler := BuildStreamableHandler(db, 30*time.Second, nil)
+			t.Cleanup(handler.Close)
+
+			if handler.sessionTimeout != tt.want {
+				t.Fatalf("BuildStreamableHandler sessionTimeout = %v, want %v (env=%q)",
+					handler.sessionTimeout, tt.want, tt.env)
+			}
+		})
+	}
+}
+
 func TestStreamableHandlerPrunesStaleSessionLogins(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second, nil)

@@ -65,6 +65,11 @@ type StreamableHandler struct {
 	watchManager *watch.Manager
 	server       *mcp.Server
 
+	// sessionTimeout is the resolved idle timeout passed to the SDK at handler
+	// construction. Exposed so tests can verify env propagation from
+	// MCP_SESSION_TIMEOUT_MIN through BuildStreamableHandler.
+	sessionTimeout time.Duration
+
 	mu sync.Mutex
 
 	sessionLogins map[string]string
@@ -187,11 +192,20 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInva
 	RegisterThreadTools(srv, clientProvider)
 	RegisterCycleTool(srv, clientProvider, db)
 
+	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
+	if sessionTimeout == 0 {
+		slog.Warn("streamable HTTP session idle timeout disabled — SDK will never prune idle sessions; ensure clients send DELETE on shutdown or memory will grow unbounded")
+	} else {
+		slog.Info("streamable HTTP session idle timeout configured",
+			"minutes", int(sessionTimeout/time.Minute))
+	}
+
 	streamableHandler := &StreamableHandler{
-		watchManager:  watchManager,
-		server:        srv,
-		sessionLogins: make(map[string]string),
-		stopPruner:    make(chan struct{}),
+		watchManager:   watchManager,
+		server:         srv,
+		sessionTimeout: sessionTimeout,
+		sessionLogins:  make(map[string]string),
+		stopPruner:     make(chan struct{}),
 	}
 
 	getServer := func(r *http.Request) *mcp.Server {
@@ -199,13 +213,6 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInva
 			return nil
 		}
 		return srv
-	}
-	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
-	if sessionTimeout == 0 {
-		slog.Warn("streamable HTTP session idle timeout disabled — SDK will never prune idle sessions; ensure clients send DELETE on shutdown or memory will grow unbounded")
-	} else {
-		slog.Info("streamable HTTP session idle timeout configured",
-			"minutes", int(sessionTimeout/time.Minute))
 	}
 	streamableHandler.handler = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
 		EventStore:     mcp.NewMemoryEventStore(nil),
