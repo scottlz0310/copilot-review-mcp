@@ -64,6 +64,7 @@ Register `http://localhost:8083/mcp` as an OAuth-enabled MCP server in your MCP 
 | `TOKEN_EXPIRES_IN_SEC` | | `7776000` | Token expiry advertised to clients (seconds) |
 | `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
+| `MCP_SESSION_TIMEOUT_MIN` | | `30` | Idle timeout for Streamable HTTP sessions (minutes). After this period without any HTTP request from a client, the session is closed and subsequent requests with the stale `Mcp-Session-Id` get `404 session not found`. Set to `0` to never expire idle sessions. |
 
 ## Local Development
 

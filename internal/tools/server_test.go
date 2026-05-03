@@ -145,6 +145,59 @@ func TestTokenFromToolRequestPrefersCurrentAuthorizationHeader(t *testing.T) {
 	}
 }
 
+func TestResolveStreamableSessionTimeout(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want time.Duration
+	}{
+		{
+			name: "unset uses default",
+			env:  nil,
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "empty uses default",
+			env:  map[string]string{sessionTimeoutEnv: ""},
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "whitespace uses default",
+			env:  map[string]string{sessionTimeoutEnv: "   "},
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "positive minutes",
+			env:  map[string]string{sessionTimeoutEnv: "120"},
+			want: 120 * time.Minute,
+		},
+		{
+			name: "zero disables idle eviction",
+			env:  map[string]string{sessionTimeoutEnv: "0"},
+			want: 0,
+		},
+		{
+			name: "negative falls back to default",
+			env:  map[string]string{sessionTimeoutEnv: "-5"},
+			want: defaultStreamableSessionTimeout,
+		},
+		{
+			name: "non-integer falls back to default",
+			env:  map[string]string{sessionTimeoutEnv: "abc"},
+			want: defaultStreamableSessionTimeout,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getenv := func(key string) string { return tt.env[key] }
+			if got := resolveStreamableSessionTimeout(getenv); got != tt.want {
+				t.Fatalf("resolveStreamableSessionTimeout(%v) = %v, want %v", tt.env, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStreamableHandlerPrunesStaleSessionLogins(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second, nil)

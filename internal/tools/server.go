@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,27 @@ const (
 	defaultSessionPruneInterval     = 5 * time.Minute
 	mcpSessionIDHeader              = "Mcp-Session-Id"
 	sessionUserMismatchError        = "session_user_mismatch"
+	sessionTimeoutEnv               = "MCP_SESSION_TIMEOUT_MIN"
 )
+
+// resolveStreamableSessionTimeout returns the idle timeout used for Streamable
+// HTTP sessions. The value is read from MCP_SESSION_TIMEOUT_MIN (minutes);
+// a value of 0 disables idle eviction (SDK semantics: idle sessions are never
+// closed). Negative or unparseable values fall back to the default.
+func resolveStreamableSessionTimeout(getenv func(string) string) time.Duration {
+	raw := strings.TrimSpace(getenv(sessionTimeoutEnv))
+	if raw == "" {
+		return defaultStreamableSessionTimeout
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		slog.Warn("invalid MCP_SESSION_TIMEOUT_MIN; falling back to default",
+			"value", raw,
+			"default_minutes", int(defaultStreamableSessionTimeout/time.Minute))
+		return defaultStreamableSessionTimeout
+	}
+	return time.Duration(n) * time.Minute
+}
 
 // TokenInvalidator is implemented by auth.Handler to clear a token from the
 // validation cache when a downstream GitHub API call returns HTTP 401.
@@ -174,9 +195,16 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInva
 		}
 		return srv
 	}
+	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
+	if sessionTimeout == 0 {
+		slog.Info("streamable HTTP session idle timeout disabled (idle sessions never expire)")
+	} else {
+		slog.Info("streamable HTTP session idle timeout configured",
+			"minutes", int(sessionTimeout/time.Minute))
+	}
 	streamableHandler.handler = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
 		EventStore:     mcp.NewMemoryEventStore(nil),
-		SessionTimeout: defaultStreamableSessionTimeout,
+		SessionTimeout: sessionTimeout,
 		// DisableLocalhostProtection is opt-in via MCP_DISABLE_LOCALHOST_PROTECTION=true.
 		// Enable when the server runs behind a reverse proxy or inside a Docker network.
 		DisableLocalhostProtection: os.Getenv("MCP_DISABLE_LOCALHOST_PROTECTION") == "true",
