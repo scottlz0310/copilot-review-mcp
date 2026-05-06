@@ -4,79 +4,42 @@
 
 This guide covers the basic setup needed to run `copilot-review-mcp` as an MCP server:
 
-- GitHub OAuth App setup
-- Docker build, start, stop, and logs
-- Basic MCP client configuration
+- Architecture overview (mcp-gateway required)
+- Docker start, stop, and logs
+- Connecting MCP clients via mcp-gateway
 - `pr-review-cycle` skill installation
 
 For the tool-level flow, see [watch-tools.md](watch-tools.md). For the skill template itself, see [skills/pr-review-cycle.md](skills/pr-review-cycle.md).
 
-## 1. Create a GitHub OAuth App
+> **v3.0.0 BREAKING CHANGE**: Standalone OAuth has been removed. mcp-gateway is now required.
 
-Create one OAuth App for each public server URL you use.
+## Architecture
 
-For local Docker usage:
-
-| Field | Value |
-|---|---|
-| Application name | `copilot-review-mcp local` |
-| Homepage URL | `http://localhost:8083` |
-| Authorization callback URL | `http://localhost:8083/callback` |
-
-For hosted usage:
-
-| Field | Value |
-|---|---|
-| Application name | `copilot-review-mcp` |
-| Homepage URL | `https://<your-host>` |
-| Authorization callback URL | `https://<your-host>/callback` |
-
-After creating the app:
-
-1. Copy the Client ID into `GITHUB_CLIENT_ID`.
-2. Generate a Client Secret and copy it into `GITHUB_CLIENT_SECRET`.
-3. Keep the secret out of Git.
-
-GitHub OAuth App settings are managed from:
-
-- Personal account: <https://github.com/settings/developers>
-- Organization: `https://github.com/organizations/<org>/settings/applications`
-
-Reference: [GitHub Docs: Creating an OAuth app](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)
-
-## 2. Prepare environment variables
-
-Create `.env` from `.env.template` and fill in the OAuth App values.
-
-```bash
-cp .env.template .env
+```
+MCP Client (Claude Code / Claude Desktop / VS Code)
+    │
+    │  HTTPS / OAuth  (handled by mcp-gateway)
+    ▼
+mcp-gateway  ──►  X-Authenticated-User + Authorization headers
+    │
+    │  HTTP (internal only)
+    ▼
+copilot-review-mcp  :8083
+    │
+    │  SQLite
+    ▼
+/data/copilot-review.db
 ```
 
-PowerShell:
+`copilot-review-mcp` trusts the headers injected by mcp-gateway and never performs OAuth directly.
 
-```powershell
-Copy-Item .env.template .env
-```
+## 1. Set up mcp-gateway
 
-Minimum local configuration:
+Follow the [mcp-gateway documentation](https://github.com/mcp-b/mcp-gateway) to deploy and configure the gateway.
 
-```env
-GITHUB_CLIENT_ID=your_client_id
-GITHUB_CLIENT_SECRET=your_client_secret
-BASE_URL=http://localhost:8083
-GITHUB_OAUTH_SCOPES=repo,user
-MCP_PORT=8083
-SQLITE_PATH=/data/copilot-review.db
-```
+Point one of its upstream routes at the address reachable **from the gateway** (e.g., `http://copilot-review-mcp:8083` when both run on the same Docker network, or `http://host.docker.internal:8083` on Docker Desktop).
 
-Notes:
-
-- `BASE_URL` must match the OAuth App callback host.
-- The GitHub OAuth App callback URL must be `$BASE_URL/callback`.
-- The default redirect host allowlist is currently `localhost`, `127.0.0.1`, and `vscode.dev`.
-- Hosted `claude.ai` operation needs the redirect host allowlist work tracked in [#6](https://github.com/scottlz0310/copilot-review-mcp/issues/6).
-
-## 3. Run with Docker
+## 2. Run copilot-review-mcp with Docker
 
 ### Pull the published image
 
@@ -96,8 +59,8 @@ Published image:
 
 ```bash
 docker run -d --name copilot-review-mcp \
-  --env-file .env \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
@@ -106,16 +69,21 @@ Local image:
 
 ```bash
 docker run -d --name copilot-review-mcp \
-  --env-file .env \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   copilot-review-mcp:dev
 ```
 
-PowerShell can use the same command on one line:
+Optional environment variables (all have defaults):
 
-```powershell
-docker run -d --name copilot-review-mcp --env-file .env -p 127.0.0.1:8083:8083 -v copilot-review-data:/data ghcr.io/scottlz0310/copilot-review-mcp:latest
+```env
+MCP_PORT=8083
+BIND_ADDR=127.0.0.1   # Use 0.0.0.0 in Docker so mcp-gateway (other container) can reach this server
+LOG_LEVEL=info
+SQLITE_PATH=/data/copilot-review.db
+IN_PROGRESS_THRESHOLD_SEC=30
+MCP_SESSION_TIMEOUT_MIN=0
 ```
 
 ### Check health
@@ -162,45 +130,43 @@ Remove it only when you intentionally want to delete local state:
 docker volume rm copilot-review-data
 ```
 
-## 4. Configure an MCP client
+## 3. Configure an MCP client
 
-The MCP endpoint is:
+### Streamable HTTP clients (Claude Code, VS Code)
 
-```text
-http://localhost:8083/mcp
-```
-
-Use an MCP client that supports Streamable HTTP and OAuth. The exact config shape differs by client, but the core values are:
+Point the client at your mcp-gateway URL:
 
 ```json
 {
   "mcpServers": {
     "copilot-review-mcp": {
       "type": "http",
-      "url": "http://localhost:8083/mcp"
+      "url": "https://your-gateway-url/mcp"
     }
   }
 }
 ```
 
-Some clients use `servers` instead of `mcpServers`, or `streamable-http` instead of `http`. Keep the URL unchanged and adapt the field names to your client.
+Some clients use `servers` instead of `mcpServers`, or `streamable-http` instead of `http`. Keep the URL unchanged.
 
-For VS Code-style MCP config, the shape is typically:
+### stdio clients (Claude Desktop, etc.) via mcp-remote
+
+Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "copilot-review-mcp": {
-      "type": "http",
-      "url": "http://localhost:8083/mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
   }
 }
 ```
 
-When the client first connects, it should open the OAuth authorization flow. Sign in with GitHub and authorize the OAuth App.
+When the client first connects, mcp-gateway handles the OAuth authorization flow. Sign in with GitHub.
 
-## 5. Install the `pr-review-cycle` skill
+## 4. Install the `pr-review-cycle` skill
 
 The repository contains skill templates, but they must be copied into your AI agent's local skill directory before use.
 
@@ -241,11 +207,11 @@ After copying, edit the placeholders in the skill if your client exposes differe
 | `{CRM}` | `copilot-review-mcp` tools |
 | `{GH}` | GitHub MCP tools used for comments, CI, and PR operations |
 
-## 6. Basic review-cycle usage
+## 5. Basic review-cycle usage
 
 Prerequisites:
 
-- `copilot-review-mcp` is running and connected in the MCP client.
+- `copilot-review-mcp` is running and accessible via mcp-gateway.
 - A GitHub MCP server or GitHub connector is also available.
 - The current repository has an open PR.
 
@@ -269,13 +235,9 @@ Merging remains a separate explicit user decision.
 
 ## Troubleshooting
 
-### `redirect_uri host not permitted`
+### `missing_proxy_identity` (401)
 
-The MCP client sent a redirect URI whose host is not allowed by the server. For local usage, use `localhost`, `127.0.0.1`, or `vscode.dev`. Hosted Claude Web usage requires the redirect-host configuration tracked in #6.
-
-### `invalid_token`
-
-Re-run the OAuth flow in the MCP client. If the token was revoked in GitHub, the client must authenticate again.
+The request reached `copilot-review-mcp` without going through mcp-gateway, or the gateway is not configured to inject `X-Authenticated-User`. Ensure all traffic passes through mcp-gateway.
 
 ### `session_user_mismatch`
 
@@ -289,4 +251,4 @@ Check logs:
 docker logs copilot-review-mcp
 ```
 
-Common causes are missing `GITHUB_CLIENT_ID`, missing `GITHUB_CLIENT_SECRET`, or a port already in use.
+Common causes are a port already in use or a bad `SQLITE_PATH`.

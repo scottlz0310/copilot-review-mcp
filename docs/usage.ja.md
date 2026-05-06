@@ -4,79 +4,42 @@
 
 このドキュメントでは、`copilot-review-mcp` を MCP サーバーとして動かすための基本設定をまとめる。
 
-- GitHub OAuth App の設定
-- Docker コンテナのビルド、起動、終了、ログ確認
-- MCP クライアント側の基本設定例
+- アーキテクチャ概要（mcp-gateway 必須）
+- Docker コンテナの起動、終了、ログ確認
+- mcp-gateway 経由の MCP クライアント接続
 - `pr-review-cycle` skill の配置方法
 
 ツール単位の流れは [watch-tools.ja.md](watch-tools.ja.md)、skill テンプレート本体は [skills/pr-review-cycle.ja.md](skills/pr-review-cycle.ja.md) を参照。
 
-## 1. GitHub OAuth App を作成する
+> **v3.0.0 BREAKING CHANGE**: スタンドアロン OAuth を削除。mcp-gateway が必須になりました。
 
-利用する公開 URL ごとに OAuth App を 1 つ作る。
+## アーキテクチャ
 
-ローカル Docker で使う場合:
-
-| 項目 | 値 |
-|---|---|
-| Application name | `copilot-review-mcp local` |
-| Homepage URL | `http://localhost:8083` |
-| Authorization callback URL | `http://localhost:8083/callback` |
-
-外部ホストで使う場合:
-
-| 項目 | 値 |
-|---|---|
-| Application name | `copilot-review-mcp` |
-| Homepage URL | `https://<your-host>` |
-| Authorization callback URL | `https://<your-host>/callback` |
-
-作成後に行うこと:
-
-1. Client ID を `GITHUB_CLIENT_ID` に設定する。
-2. Client Secret を生成し、`GITHUB_CLIENT_SECRET` に設定する。
-3. secret は Git に入れない。
-
-GitHub OAuth App の設定画面:
-
-- 個人アカウント: <https://github.com/settings/developers>
-- Organization: `https://github.com/organizations/<org>/settings/applications`
-
-参考: [GitHub Docs: Creating an OAuth app](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)
-
-## 2. 環境変数を準備する
-
-`.env.template` から `.env` を作成し、OAuth App の値を入れる。
-
-```bash
-cp .env.template .env
+```
+MCP クライアント（Claude Code / Claude Desktop / VS Code）
+    │
+    │  HTTPS / OAuth（mcp-gateway が処理）
+    ▼
+mcp-gateway  ──►  X-Authenticated-User + Authorization ヘッダーを注入
+    │
+    │  HTTP（内部通信のみ）
+    ▼
+copilot-review-mcp  :8083
+    │
+    │  SQLite
+    ▼
+/data/copilot-review.db
 ```
 
-PowerShell:
+`copilot-review-mcp` は mcp-gateway が注入したヘッダーを信頼し、OAuth を直接行わない。
 
-```powershell
-Copy-Item .env.template .env
-```
+## 1. mcp-gateway をセットアップする
 
-ローカルでの最小設定:
+[mcp-gateway のドキュメント](https://github.com/mcp-b/mcp-gateway) に従ってデプロイ・設定する。
 
-```env
-GITHUB_CLIENT_ID=your_client_id
-GITHUB_CLIENT_SECRET=your_client_secret
-BASE_URL=http://localhost:8083
-GITHUB_OAUTH_SCOPES=repo,user
-MCP_PORT=8083
-SQLITE_PATH=/data/copilot-review.db
-```
+gateway の upstream ルートのひとつを、**gateway から到達可能**なアドレスに向ける（例：同一 Docker ネットワーク上では `http://copilot-review-mcp:8083`、Docker Desktop では `http://host.docker.internal:8083`）。
 
-注意:
-
-- `BASE_URL` は OAuth App の callback URL の host と一致させる。
-- GitHub OAuth App の callback URL は `$BASE_URL/callback` にする。
-- 現在の redirect host allowlist の既定値は `localhost`, `127.0.0.1`, `vscode.dev`。
-- hosted `claude.ai` 運用には [#6](https://github.com/scottlz0310/copilot-review-mcp/issues/6) で扱う redirect host allowlist の設定対応が必要。
-
-## 3. Docker で起動する
+## 2. Docker で copilot-review-mcp を起動する
 
 ### 公開済みイメージを pull
 
@@ -96,8 +59,8 @@ docker build -t copilot-review-mcp:dev .
 
 ```bash
 docker run -d --name copilot-review-mcp \
-  --env-file .env \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
@@ -106,16 +69,21 @@ docker run -d --name copilot-review-mcp \
 
 ```bash
 docker run -d --name copilot-review-mcp \
-  --env-file .env \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   copilot-review-mcp:dev
 ```
 
-PowerShell では 1 行で実行すると確実。
+任意の環境変数（すべてデフォルト値あり）:
 
-```powershell
-docker run -d --name copilot-review-mcp --env-file .env -p 127.0.0.1:8083:8083 -v copilot-review-data:/data ghcr.io/scottlz0310/copilot-review-mcp:latest
+```env
+MCP_PORT=8083
+BIND_ADDR=127.0.0.1   # Docker で別コンテナ（mcp-gateway 等）から到達させる場合は 0.0.0.0 を指定
+LOG_LEVEL=info
+SQLITE_PATH=/data/copilot-review.db
+IN_PROGRESS_THRESHOLD_SEC=30
+MCP_SESSION_TIMEOUT_MIN=0
 ```
 
 ### health check
@@ -162,45 +130,43 @@ docker volume ls --filter name=copilot-review-data
 docker volume rm copilot-review-data
 ```
 
-## 4. MCP クライアントを設定する
+## 3. MCP クライアントを設定する
 
-MCP endpoint は以下。
+### Streamable HTTP クライアント（Claude Code、VS Code）
 
-```text
-http://localhost:8083/mcp
-```
-
-Streamable HTTP と OAuth に対応した MCP クライアントにこの URL を登録する。設定ファイルの形はクライアントごとに異なるが、基本値は以下。
+mcp-gateway の URL をクライアントに登録する:
 
 ```json
 {
   "mcpServers": {
     "copilot-review-mcp": {
       "type": "http",
-      "url": "http://localhost:8083/mcp"
+      "url": "https://your-gateway-url/mcp"
     }
   }
 }
 ```
 
-クライアントによっては `mcpServers` ではなく `servers`、または `http` ではなく `streamable-http` を使う。URL は同じまま、利用中のクライアントの設定名に合わせる。
+クライアントによっては `mcpServers` ではなく `servers`、または `http` ではなく `streamable-http` を使う。URL は変えずにフィールド名を合わせる。
 
-VS Code 系の MCP config では、おおむね次の形になる。
+### stdio クライアント（Claude Desktop 等）— mcp-remote 経由
+
+[mcp-remote](https://github.com/geelen/mcp-remote) をブリッジとして使用する:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "copilot-review-mcp": {
-      "type": "http",
-      "url": "http://localhost:8083/mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
   }
 }
 ```
 
-初回接続時に OAuth 認可フローが開く。GitHub にログインし、作成した OAuth App を認可する。
+初回接続時に mcp-gateway が OAuth 認可フローを処理する。GitHub にログインして認可する。
 
-## 5. `pr-review-cycle` skill を配置する
+## 4. `pr-review-cycle` skill を配置する
 
 このリポジトリには skill テンプレートが入っているが、使う前に AI エージェント側のローカル skill ディレクトリへコピーする。
 
@@ -241,11 +207,11 @@ cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
 | `{CRM}` | `copilot-review-mcp` のツール |
 | `{GH}` | コメント、CI、PR 操作に使う GitHub MCP ツール |
 
-## 6. 基本的な review cycle の使い方
+## 5. 基本的な review cycle の使い方
 
 前提:
 
-- `copilot-review-mcp` が起動し、MCP クライアントから接続できる。
+- `copilot-review-mcp` が起動し、mcp-gateway 経由で接続できる。
 - GitHub MCP サーバーまたは GitHub connector も利用できる。
 - 対象リポジトリに open PR がある。
 
@@ -269,13 +235,9 @@ skill は以下を行う。
 
 ## トラブルシュート
 
-### `redirect_uri host not permitted`
+### `missing_proxy_identity`（401）
 
-MCP クライアントが送った redirect URI の host がサーバー側で許可されていない。ローカル利用では `localhost`, `127.0.0.1`, `vscode.dev` を使う。Claude Web の hosted 運用には #6 の redirect host 設定対応が必要。
-
-### `invalid_token`
-
-MCP クライアント側で OAuth フローをやり直す。GitHub 側で token を revoke した場合も再認証が必要。
+リクエストが mcp-gateway を経由せずに `copilot-review-mcp` に届いた、または gateway が `X-Authenticated-User` を注入するよう設定されていない。すべてのトラフィックが mcp-gateway を通るよう確認する。
 
 ### `session_user_mismatch`
 
@@ -289,4 +251,4 @@ MCP クライアント側で OAuth フローをやり直す。GitHub 側で toke
 docker logs copilot-review-mcp
 ```
 
-よくある原因は `GITHUB_CLIENT_ID` 未設定、`GITHUB_CLIENT_SECRET` 未設定、または port の競合。
+よくある原因は port の競合または `SQLITE_PATH` の誤り。

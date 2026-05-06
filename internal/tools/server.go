@@ -59,11 +59,7 @@ func resolveStreamableSessionTimeout(getenv func(string) string) time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// TokenInvalidator is implemented by auth.Handler to clear a token from the
-// validation cache when a downstream GitHub API call returns HTTP 401.
-type TokenInvalidator interface {
-	InvalidateCachedToken(token string)
-}
+// TokenInvalidator was removed in v3.0.0 (standalone OAuth removed).
 
 // StreamableHandler serves MCP over Streamable HTTP and owns shared background state.
 type StreamableHandler struct {
@@ -136,20 +132,14 @@ func (h *StreamableHandler) Close() {
 // getServer is called for new stateful MCP sessions and returns the shared
 // long-lived *mcp.Server. GitHub clients are created per tool call from the
 // authenticated request headers.
-// inv is called to invalidate the cached token when GitHub returns HTTP 401.
-func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInvalidator) *StreamableHandler {
-	var invalidate func(string)
-	if inv != nil {
-		invalidate = inv.InvalidateCachedToken
-	}
-
-	clientProvider := newGitHubClientProvider(threshold, invalidate)
+func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHandler {
+	clientProvider := newGitHubClientProvider(threshold, nil)
 	// watchManager is declared before srv so the SubscribeHandler closure can reference it
 	// for authorization. At the time any subscribe request arrives the server is already
 	// fully initialized, so watchManager is always non-nil.
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "copilot-review-mcp", Version: "2.5.0"},
+		&mcp.Implementation{Name: "copilot-review-mcp", Version: "3.0.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
@@ -183,7 +173,7 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration, inv TokenInva
 	)
 	watchManager = watch.NewManager(db, watch.Options{
 		Threshold:       threshold,
-		InvalidateToken: invalidate,
+		InvalidateToken: nil,
 		NotifyResourceUpdated: func(uri string) {
 			if err := srv.ResourceUpdated(context.Background(), &mcp.ResourceUpdatedNotificationParams{URI: uri}); err != nil {
 				slog.Warn("resource updated notification failed", "uri", uri, "err", err)

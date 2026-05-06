@@ -9,11 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Standalone GitHub OAuth App flow removed entirely.** `internal/auth` package (handler, session, token cache) deleted.
+- `AuthModeStandalone`, `AuthModeGateway` constants and `AuthMode` type removed from `internal/middleware`.
+- `TokenInvalidator` interface and the `inv TokenInvalidator` parameter removed from `BuildStreamableHandler`.
+- Environment variables removed: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
+- OAuth endpoints (`/.well-known/oauth-authorization-server`, `/authorize`, `/callback`, `/token`, `/register`) now return **410 Gone** with a migration message.
+
+### Changed
+
+- **mcp-gateway is now required** for authentication. The server trusts the `X-Authenticated-User` header and `Authorization: Bearer` token injected by the gateway.
+- `BuildStreamableHandler(db, threshold)` — third argument removed.
+- `middleware.Auth()` — no longer accepts a `TokenValidator` or `AuthMode`; gateway-only.
+- Version bumped to `3.0.0` in the MCP server implementation metadata.
+
 ### Added
 
-- `AUTH_MODE=gateway` support: when set to `gateway`, the auth middleware trusts the `X-Authenticated-User` header injected by an upstream proxy (e.g. mcp-gateway) and skips GitHub API token validation, eliminating double-validation overhead
-- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are no longer required when `AUTH_MODE=gateway`
-- `MCP_SESSION_TIMEOUT_MIN` environment variable to configure the Streamable HTTP session idle timeout. **Default changed to `0` (idle sessions are never closed)** to fix the `session not found` failure mode observed after ~30 minutes of idle time behind `mcp-gateway` (#14). Operators who prefer eviction can set a positive value (e.g. `1440` for 24h); see README for the memory-growth trade-off when clients disappear without sending `DELETE`.
+- `BIND_ADDR` environment variable (default `127.0.0.1`). Set to `0.0.0.0` in Docker so the container is reachable from mcp-gateway on the same network.
+
+### Migration
+
+If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
+
+1. Deploy [mcp-gateway](https://github.com/mcp-b/mcp-gateway) in front of this server.
+2. Remove the following environment variables: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `AUTH_MODE`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC` (see "Breaking Changes" above for the full list of removed variables).
+3. Point your MCP client at the mcp-gateway URL. For stdio clients use [mcp-remote](https://github.com/geelen/mcp-remote).
 
 ## [2.5.0] - 2026-04-26
 
