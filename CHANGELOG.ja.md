@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-06
+
 ### 削除
 
 - **スタンドアロン GitHub OAuth App フローを完全削除。** `internal/auth` パッケージ（handler、session、token cache）を削除。
