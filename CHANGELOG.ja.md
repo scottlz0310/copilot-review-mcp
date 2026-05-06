@@ -9,11 +9,32 @@
 
 ## [Unreleased]
 
-### 追加
+## [3.0.0] - BREAKING CHANGE
 
-- `AUTH_MODE=gateway` 対応: `gateway` に設定すると、auth ミドルウェアが上流プロキシ（例: mcp-gateway）から注入された `X-Authenticated-User` ヘッダーを信頼し、GitHub API によるトークン検証をスキップする（二重検証の排除）
-- `AUTH_MODE=gateway` 時は `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` が不要になった
-- Streamable HTTP セッションの idle timeout を設定する `MCP_SESSION_TIMEOUT_MIN` 環境変数を追加。**既定値を `0`（idle で閉じない）に変更**し、`mcp-gateway` 経由で 30 分前後 idle 後に発生していた `session not found` を解消（#14）。eviction が必要な運用では正の値（例: 24 時間なら `1440`）を指定する。`DELETE` を送らずに消えたクライアントの session が残るメモリ増加トレードオフは README 参照。
+### 削除
+
+- **スタンドアロン GitHub OAuth App フローを完全削除。** `internal/auth` パッケージ（handler、session、token cache）を削除。
+- `AuthModeStandalone`、`AuthModeGateway` 定数と `AuthMode` 型を `internal/middleware` から削除。
+- `TokenInvalidator` インタフェースと `BuildStreamableHandler` の第三引数 `inv TokenInvalidator` を削除。
+- 削除された環境変数: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
+- OAuth エンドポイント（`/.well-known/oauth-authorization-server`、`/authorize`、`/callback`、`/token`、`/register`）は **410 Gone** と移行案内を返すようになった。
+
+### 変更
+
+- **認証に mcp-gateway が必須**。サーバーはゲートウェイが注入する `X-Authenticated-User` ヘッダーと `Authorization: Bearer` トークンを信頼する。
+- `BuildStreamableHandler(db, threshold)` — 第三引数を削除。
+- `middleware.Auth()` — `TokenValidator` と `AuthMode` を引数に取らなくなった（gateway のみ対応）。
+- MCP サーバー実装メタデータのバージョンを `3.0.0` に更新。
+
+### 移行ガイド
+
+`AUTH_MODE=standalone` または `AUTH_MODE=gateway` で運用していた場合:
+
+1. このサーバーの前段に [mcp-gateway](https://github.com/mcp-b/mcp-gateway) をデプロイする。
+2. `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`AUTH_MODE` を環境変数から削除する。
+3. MCP クライアントの接続先を mcp-gateway の URL に変更する。stdio クライアントは [mcp-remote](https://github.com/geelen/mcp-remote) を使用する。
+
+> **注意**: [mcp-gateway#48](https://github.com/mcp-b/mcp-gateway/issues/48)（bind_addr/public_url の分離）が解決し、gateway の再認証が安定するまでこのリリースをマージしないこと。
 
 ## [2.5.0] - 2026-04-26
 

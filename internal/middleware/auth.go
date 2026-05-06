@@ -3,11 +3,8 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
-
-	"log/slog"
 )
 
 type contextKey string
@@ -15,72 +12,22 @@ type contextKey string
 const ContextKeyLogin contextKey = "github_login"
 const ContextKeyToken contextKey = "github_token"
 
-// AuthMode controls how the auth middleware validates requests.
-type AuthMode string
-
-const (
-	// AuthModeStandalone is the default mode: validates Bearer tokens via the GitHub API.
-	AuthModeStandalone AuthMode = "standalone"
-	// AuthModeGateway trusts the X-Authenticated-User header injected by an upstream proxy
-	// (e.g. mcp-gateway). GitHub API validation is skipped.
-	AuthModeGateway AuthMode = "gateway"
-)
-
-// TokenValidator is implemented by auth.Handler.
-type TokenValidator interface {
-	ValidateToken(ctx context.Context, token string) (string, error)
-}
-
-// upstreamErrorer is satisfied by errors that represent upstream service failures
-// (network errors, GitHub 5xx), allowing the middleware to return 503 instead of 401.
-type upstreamErrorer interface {
-	IsUpstreamError() bool
-}
-
-// Auth returns a middleware that validates Bearer tokens via the GitHub API.
-// When mode is AuthModeGateway, trusts X-Authenticated-User injected by an upstream proxy
-// and skips token validation against the GitHub API.
-func Auth(v TokenValidator, mode AuthMode) func(http.Handler) http.Handler {
+// Auth returns a middleware that trusts the X-Authenticated-User header and
+// Bearer token injected by an upstream proxy (mcp-gateway). Standalone OAuth
+// has been removed; mcp-gateway is required.
+func Auth() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if mode == AuthModeGateway {
-				login := r.Header.Get("X-Authenticated-User")
-				if login == "" {
-					writeUnauthorized(w, "missing_proxy_identity")
-					return
-				}
-				token := extractBearer(r)
-				if token == "" {
-					writeUnauthorized(w, "missing_token")
-					return
-				}
-				ctx := context.WithValue(r.Context(), ContextKeyLogin, login)
-				ctx = context.WithValue(ctx, ContextKeyToken, token)
-				next.ServeHTTP(w, r.WithContext(ctx))
+			login := r.Header.Get("X-Authenticated-User")
+			if login == "" {
+				writeUnauthorized(w, "missing_proxy_identity")
 				return
 			}
-
 			token := extractBearer(r)
 			if token == "" {
 				writeUnauthorized(w, "missing_token")
 				return
 			}
-
-			login, err := v.ValidateToken(r.Context(), token)
-			if err != nil {
-				var ue upstreamErrorer
-				if errors.As(err, &ue) {
-					slog.Error("upstream error during auth", "err", err, "path", r.URL.Path)
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusServiceUnavailable)
-					_ = json.NewEncoder(w).Encode(map[string]string{"error": "upstream_error"})
-					return
-				}
-				slog.Warn("auth failed", "err", err, "path", r.URL.Path)
-				writeUnauthorized(w, "invalid_token")
-				return
-			}
-
 			ctx := context.WithValue(r.Context(), ContextKeyLogin, login)
 			ctx = context.WithValue(ctx, ContextKeyToken, token)
 			next.ServeHTTP(w, r.WithContext(ctx))

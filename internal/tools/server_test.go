@@ -31,7 +31,7 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 		}
 	})
 
-	handler := BuildStreamableHandler(db, 30*time.Second, nil)
+	handler := BuildStreamableHandler(db, 30*time.Second)
 	handler.Close()
 	handler.Close()
 
@@ -49,7 +49,7 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 
 func TestStreamableHandlerReusesStatefulSessionServer(t *testing.T) {
 	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second, nil)
+	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
 
 	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
@@ -90,7 +90,7 @@ func TestStreamableHandlerReusesStatefulSessionServer(t *testing.T) {
 
 func TestStreamableHandlerRejectsSessionUserMismatch(t *testing.T) {
 	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second, nil)
+	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
 
 	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
@@ -246,7 +246,7 @@ func TestBuildStreamableHandlerPropagatesSessionTimeout(t *testing.T) {
 			t.Setenv(sessionTimeoutEnv, tt.env)
 
 			db := openServerTestDB(t)
-			handler := BuildStreamableHandler(db, 30*time.Second, nil)
+			handler := BuildStreamableHandler(db, 30*time.Second)
 			t.Cleanup(handler.Close)
 
 			if handler.sessionTimeout != tt.want {
@@ -259,7 +259,7 @@ func TestBuildStreamableHandlerPropagatesSessionTimeout(t *testing.T) {
 
 func TestStreamableHandlerPrunesStaleSessionLogins(t *testing.T) {
 	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second, nil)
+	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
 
 	handler.rememberSession("stale-session", "alice")

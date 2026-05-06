@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/auth"
 	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
 	"github.com/scottlz0310/copilot-review-mcp/internal/store"
 	"github.com/scottlz0310/copilot-review-mcp/internal/tools"
@@ -31,44 +30,23 @@ func main() {
 	}
 	defer db.Close()
 
-	oauthHandler := auth.NewHandler(auth.Config{
-		GitHubClientID:     cfg.githubClientID,
-		GitHubClientSecret: cfg.githubClientSecret,
-		BaseURL:            cfg.baseURL,
-		Scopes:             cfg.oauthScopes,
-		SessionTTL:         time.Duration(cfg.sessionTTLMin) * time.Minute,
-		CacheTTL:           time.Duration(cfg.tokenCacheTTLMin) * time.Minute,
-		ExpiresIn:          time.Duration(cfg.tokenExpiresInSec) * time.Second,
-	})
+	slog.Info("auth mode: gateway (trusting X-Authenticated-User header from mcp-gateway)")
 
-	if cfg.authMode == middleware.AuthModeGateway {
-		slog.Info("auth mode: gateway (trusting X-Authenticated-User header)")
-	}
-
-	authMiddleware := middleware.Auth(oauthHandler, cfg.authMode)
+	authMiddleware := middleware.Auth()
 
 	mux := http.NewServeMux()
 
-	if cfg.authMode == middleware.AuthModeGateway {
-		// In gateway mode, OAuth endpoints are unused; return 410 Gone with an explanation.
-		goneHandler := func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusGone)
-			_, _ = fmt.Fprintln(w, `{"error":"oauth_unavailable","detail":"OAuth endpoints are disabled in AUTH_MODE=gateway"}`)
-		}
-		mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
-		mux.HandleFunc("GET /authorize", goneHandler)
-		mux.HandleFunc("GET /callback", goneHandler)
-		mux.HandleFunc("POST /token", goneHandler)
-		mux.HandleFunc("POST /register", goneHandler)
-	} else {
-		// OAuth façade endpoints (no auth required)
-		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.Discovery)
-		mux.HandleFunc("GET /authorize", oauthHandler.Authorize)
-		mux.HandleFunc("GET /callback", oauthHandler.Callback)
-		mux.HandleFunc("POST /token", oauthHandler.Token)
-		mux.HandleFunc("POST /register", oauthHandler.Register)
+	// OAuth endpoints have been removed in v3.0.0; return 410 Gone with migration guidance.
+	goneHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		_, _ = fmt.Fprintln(w, `{"error":"oauth_removed","detail":"Standalone OAuth was removed in v3.0.0. Connect via mcp-gateway instead. See https://github.com/scottlz0310/copilot-review-mcp#readme"}`)
 	}
+	mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
+	mux.HandleFunc("GET /authorize", goneHandler)
+	mux.HandleFunc("GET /callback", goneHandler)
+	mux.HandleFunc("POST /token", goneHandler)
+	mux.HandleFunc("POST /register", goneHandler)
 
 	// Health check (no auth required)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -78,13 +56,13 @@ func main() {
 
 	// MCP endpoints (auth required) — Streamable HTTP transport (stateful, shared server)
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
-	mcpHandler := tools.BuildStreamableHandler(db, threshold, oauthHandler)
+	mcpHandler := tools.BuildStreamableHandler(db, threshold)
 	defer mcpHandler.Close()
 	mux.Handle("/mcp", authMiddleware(mcpHandler))
 	mux.Handle("/mcp/", authMiddleware(mcpHandler))
 
 	addr := ":" + cfg.port
-	slog.Info("copilot-review-mcp starting", "addr", addr, "base_url", cfg.baseURL)
+	slog.Info("copilot-review-mcp starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
 	// as a blocking fallback and may occupy one tool call for up to 30 minutes.
 	server := &http.Server{
@@ -104,61 +82,19 @@ func main() {
 }
 
 type config struct {
-	githubClientID         string
-	githubClientSecret     string
-	authMode               middleware.AuthMode
-	baseURL                string
-	oauthScopes            string
 	port                   string
 	logLevel               string
-	sessionTTLMin          int
-	tokenCacheTTLMin       int
-	tokenExpiresInSec      int
 	sqlitePath             string
 	inProgressThresholdSec int
 }
 
 func loadConfig() config {
-	mode := middleware.AuthMode(getEnv("AUTH_MODE", string(middleware.AuthModeStandalone)))
-	if mode != middleware.AuthModeStandalone && mode != middleware.AuthModeGateway {
-		slog.Error("invalid AUTH_MODE value", "value", mode, "allowed", []string{string(middleware.AuthModeStandalone), string(middleware.AuthModeGateway)})
-		os.Exit(1)
-	}
-
-	var clientID, clientSecret string
-	if mode == middleware.AuthModeGateway {
-		// In gateway mode, GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are not required.
-		clientID = getEnv("GITHUB_CLIENT_ID", "")
-		clientSecret = getEnv("GITHUB_CLIENT_SECRET", "")
-	} else {
-		clientID = mustEnv("GITHUB_CLIENT_ID")
-		clientSecret = mustEnv("GITHUB_CLIENT_SECRET")
-	}
-
-	c := config{
-		githubClientID:         clientID,
-		githubClientSecret:     clientSecret,
-		authMode:               mode,
-		baseURL:                getEnv("BASE_URL", "http://localhost:8083"),
-		oauthScopes:            getEnv("GITHUB_OAUTH_SCOPES", "repo,user"),
+	return config{
 		port:                   getEnv("MCP_PORT", "8083"),
 		logLevel:               getEnv("LOG_LEVEL", "info"),
-		sessionTTLMin:          getEnvInt("SESSION_TTL_MIN", 10),
-		tokenCacheTTLMin:       getEnvInt("TOKEN_CACHE_TTL_MIN", 30),
-		tokenExpiresInSec:      getEnvInt("TOKEN_EXPIRES_IN_SEC", 7776000), // 90 days
 		sqlitePath:             getEnv("SQLITE_PATH", "/data/copilot-review.db"),
 		inProgressThresholdSec: getEnvInt("IN_PROGRESS_THRESHOLD_SEC", 30),
 	}
-	return c
-}
-
-func mustEnv(key string) string {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		slog.Error("required environment variable not set", "key", key)
-		os.Exit(1)
-	}
-	return v
 }
 
 func getEnv(key, fallback string) string {

@@ -4,14 +4,14 @@
 
 GitHub Copilot の PR レビューサイクルを管理する MCP（Model Context Protocol）サーバー。レビュー依頼・完了検知・staleness 判定・スレッド返信／解決までを LLM 向けの async watch + notification モデルで提供する。
 
-OAuth ファサードを内蔵しており、Streamable HTTP transport で `claude.ai`、Claude Code、VS Code などの MCP クライアントから直接接続できる。
+> **v3.0.0 BREAKING CHANGE**: スタンドアロン GitHub OAuth を削除。このサーバーは認証を担う **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)** の背後にデプロイする必要があります。mcp-gateway が OAuth を処理し `X-Authenticated-User` と `Authorization` ヘッダーを注入します。
 
 ## 特徴
 
 - **async watch + notification** ベース。`start_copilot_review_watch` で background watch を開始し、`get_copilot_review_watch_status` の cheap read と `notifications/resources/updated` で進捗を取る
 - **GraphQL ベースの Copilot review request**。REST `requested_reviewers` が bot actor を黙って無視する問題を回避する
 - **PR レビュースレッド単位の操作**。`PRRT_xxx` ノード ID で reply / resolve / reply+resolve を行う
-- **OAuth Authorization Code flow** を MCP クライアント向けに提供（GitHub OAuth App をバックエンドに使用）
+- **mcp-gateway** による認証。ゲートウェイが OAuth を処理し、検証済みの identity ヘッダーを注入する
 - **Stateful session**。`Mcp-Session-Id` を GitHub login にバインドし、idle timeout で自動 prune
 - **SQLite による watch state 永続化**。プロセス再起動後の active watch は `STALE` として観測できる
 
@@ -34,37 +34,45 @@ OAuth ファサードを内蔵しており、Streamable HTTP transport で `clau
 
 セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。
 
-## クイックスタート（Docker）
+## クイックスタート（Docker + mcp-gateway）
 
-GitHub OAuth App を作成し、Client ID / Client Secret を取得しておく（コールバック URL: `http://localhost:8083/callback`）。
+このサーバーは認証のために [mcp-gateway](https://github.com/mcp-b/mcp-gateway) が必要です。
 
 ```bash
+# copilot-review-mcp を起動（直接公開せずに内部で稼働させる）
 docker run --rm -p 127.0.0.1:8083:8083 \
-  -e GITHUB_CLIENT_ID=... \
-  -e GITHUB_CLIENT_SECRET=... \
-  -e BASE_URL=http://localhost:8083 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
 
-MCP クライアント（Claude Code 等）には `http://localhost:8083/mcp` を OAuth 対応 MCP サーバーとして登録する。
+mcp-gateway で `http://localhost:8083` をプロキシするよう設定する（[mcp-gateway ドキュメント](https://github.com/mcp-b/mcp-gateway) 参照）。
+
+**stdio クライアント**（Claude Desktop 等）では [mcp-remote](https://github.com/geelen/mcp-remote) を使用：
+
+```json
+{
+  "mcpServers": {
+    "copilot-review": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://your-gateway-url/mcp"]
+    }
+  }
+}
+```
+
+詳細なセットアップ手順は [docs/usage.ja.md](docs/usage.ja.md) を参照。
 
 ## 環境変数
 
 | 変数 | 必須 | 既定値 | 説明 |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | ✓ | — | GitHub OAuth App の Client ID |
-| `GITHUB_CLIENT_SECRET` | ✓ | — | GitHub OAuth App の Client Secret |
-| `BASE_URL` | | `http://localhost:8083` | MCP サーバーの公開 URL |
-| `GITHUB_OAUTH_SCOPES` | | `repo,user` | OAuth スコープ |
 | `MCP_PORT` | | `8083` | リッスンポート |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
-| `SESSION_TTL_MIN` | | `10` | OAuth セッション TTL（分） |
-| `TOKEN_CACHE_TTL_MIN` | | `30` | トークン検証キャッシュ TTL（分） |
-| `TOKEN_EXPIRES_IN_SEC` | | `7776000` | クライアントへ告知するトークン有効期限（秒） |
 | `SQLITE_PATH` | | `/data/copilot-review.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
 | `MCP_SESSION_TIMEOUT_MIN` | | `0` | Streamable HTTP セッションの idle timeout（分）。この期間クライアントからの HTTP リクエストが無い場合、セッションは閉じられ、古い `Mcp-Session-Id` でのリクエストは `404 session not found` を返す。既定値 `0` は idle eviction を無効化し、長時間接続のクライアント（Claude Code / IDE / `mcp-gateway`）が #14 の失敗モードに遭遇しないようにしている。トレードオフ: `DELETE` を送らずに消えたクライアントの session はプロセス終了まで残る → メモリ増加を抑えたい場合は正の値（例: 24 時間なら `1440`）を指定する。 |
+
+**v3.0.0 で削除**: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 
 ## ローカル開発
 
