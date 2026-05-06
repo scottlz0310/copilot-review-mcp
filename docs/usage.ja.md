@@ -37,7 +37,7 @@ copilot-review-mcp  :8083
 
 [mcp-gateway のドキュメント](https://github.com/mcp-b/mcp-gateway) に従ってデプロイ・設定する。
 
-gateway の upstream ルートのひとつを `http://localhost:8083`（または `copilot-review-mcp` を動かす内部ホスト名）に向ける。
+gateway の upstream ルートのひとつを、**gateway から到達可能**なアドレスに向ける（例：同一 Docker ネットワーク上では `http://copilot-review-mcp:8083`、Docker Desktop では `http://host.docker.internal:8083`）。
 
 ## 2. Docker で copilot-review-mcp を起動する
 
@@ -60,6 +60,7 @@ docker build -t copilot-review-mcp:dev .
 ```bash
 docker run -d --name copilot-review-mcp \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
@@ -69,6 +70,7 @@ docker run -d --name copilot-review-mcp \
 ```bash
 docker run -d --name copilot-review-mcp \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   copilot-review-mcp:dev
 ```
@@ -77,6 +79,7 @@ docker run -d --name copilot-review-mcp \
 
 ```env
 MCP_PORT=8083
+BIND_ADDR=127.0.0.1   # Docker で別コンテナ（mcp-gateway 等）から到達させる場合は 0.0.0.0 を指定
 LOG_LEVEL=info
 SQLITE_PATH=/data/copilot-review.db
 IN_PROGRESS_THRESHOLD_SEC=30

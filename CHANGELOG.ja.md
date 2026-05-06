@@ -24,6 +24,10 @@
 - `middleware.Auth()` — `TokenValidator` と `AuthMode` を引数に取らなくなった（gateway のみ対応）。
 - MCP サーバー実装メタデータのバージョンを `3.0.0` に更新。
 
+### 追加
+
+- `BIND_ADDR` 環境変数（デフォルト `127.0.0.1`）。Docker で mcp-gateway（別コンテナ）から到達可能にするには `0.0.0.0` を指定する。
+
 ### 移行ガイド
 
 `AUTH_MODE=standalone` または `AUTH_MODE=gateway` で運用していた場合:

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `middleware.Auth()` — no longer accepts a `TokenValidator` or `AuthMode`; gateway-only.
 - Version bumped to `3.0.0` in the MCP server implementation metadata.
 
+### Added
+
+- `BIND_ADDR` environment variable (default `127.0.0.1`). Set to `0.0.0.0` in Docker so the container is reachable from mcp-gateway on the same network.
+
 ### Migration
 
 If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:

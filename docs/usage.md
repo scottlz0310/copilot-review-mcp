@@ -37,7 +37,7 @@ copilot-review-mcp  :8083
 
 Follow the [mcp-gateway documentation](https://github.com/mcp-b/mcp-gateway) to deploy and configure the gateway.
 
-Point one of its upstream routes at `http://localhost:8083` (or the internal hostname where you run `copilot-review-mcp`).
+Point one of its upstream routes at the address reachable **from the gateway** (e.g., `http://copilot-review-mcp:8083` when both run on the same Docker network, or `http://host.docker.internal:8083` on Docker Desktop).
 
 ## 2. Run copilot-review-mcp with Docker
 
@@ -60,6 +60,7 @@ Published image:
 ```bash
 docker run -d --name copilot-review-mcp \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
@@ -69,6 +70,7 @@ Local image:
 ```bash
 docker run -d --name copilot-review-mcp \
   -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   copilot-review-mcp:dev
 ```
@@ -77,6 +79,7 @@ Optional environment variables (all have defaults):
 
 ```env
 MCP_PORT=8083
+BIND_ADDR=127.0.0.1   # Use 0.0.0.0 in Docker so mcp-gateway (other container) can reach this server
 LOG_LEVEL=info
 SQLITE_PATH=/data/copilot-review.db
 IN_PROGRESS_THRESHOLD_SEC=30

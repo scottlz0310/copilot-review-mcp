@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -61,7 +62,7 @@ func main() {
 	mux.Handle("/mcp", authMiddleware(mcpHandler))
 	mux.Handle("/mcp/", authMiddleware(mcpHandler))
 
-	addr := cfg.bindAddr + ":" + cfg.port
+	addr := net.JoinHostPort(cfg.bindAddr, cfg.port)
 	slog.Info("copilot-review-mcp starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
 	// as a blocking fallback and may occupy one tool call for up to 30 minutes.

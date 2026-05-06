@@ -41,6 +41,7 @@ This server requires [mcp-gateway](https://github.com/mcp-b/mcp-gateway) to hand
 ```bash
 # Start copilot-review-mcp (internal, not exposed directly)
 docker run --rm -p 127.0.0.1:8083:8083 \
+  -e BIND_ADDR=0.0.0.0 \
   -v copilot-review-data:/data \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
@@ -67,6 +68,7 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `MCP_PORT` | | `8083` | Listen port |
+| `BIND_ADDR` | | `127.0.0.1` | Bind address. Use `0.0.0.0` in Docker so the container is reachable from mcp-gateway on the same network |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
