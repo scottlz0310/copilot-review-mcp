@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - BREAKING CHANGE
-
 ### Removed
 
 - **Standalone GitHub OAuth App flow removed entirely.** `internal/auth` package (handler, session, token cache) deleted.
@@ -33,8 +31,6 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 1. Deploy [mcp-gateway](https://github.com/mcp-b/mcp-gateway) in front of this server.
 2. Remove `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `AUTH_MODE` from your environment.
 3. Point your MCP client at the mcp-gateway URL. For stdio clients use [mcp-remote](https://github.com/geelen/mcp-remote).
-
-> **Note**: This release should not be merged until [mcp-gateway#48](https://github.com/mcp-b/mcp-gateway/issues/48) (bind_addr/public_url separation) is resolved to ensure gateway re-auth is stable.
 
 ## [2.5.0] - 2026-04-26
 

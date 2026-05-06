@@ -155,7 +155,7 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
   "mcpServers": {
     "copilot-review-mcp": {
       "command": "npx",
-      "args": ["mcp-remote", "https://your-gateway-url/mcp"]
+      "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
   }
 }

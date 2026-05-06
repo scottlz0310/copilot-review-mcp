@@ -61,7 +61,7 @@ func main() {
 	mux.Handle("/mcp", authMiddleware(mcpHandler))
 	mux.Handle("/mcp/", authMiddleware(mcpHandler))
 
-	addr := ":" + cfg.port
+	addr := cfg.bindAddr + ":" + cfg.port
 	slog.Info("copilot-review-mcp starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
 	// as a blocking fallback and may occupy one tool call for up to 30 minutes.
@@ -83,6 +83,7 @@ func main() {
 
 type config struct {
 	port                   string
+	bindAddr               string
 	logLevel               string
 	sqlitePath             string
 	inProgressThresholdSec int
@@ -91,6 +92,7 @@ type config struct {
 func loadConfig() config {
 	return config{
 		port:                   getEnv("MCP_PORT", "8083"),
+		bindAddr:               getEnv("BIND_ADDR", "127.0.0.1"),
 		logLevel:               getEnv("LOG_LEVEL", "info"),
 		sqlitePath:             getEnv("SQLITE_PATH", "/data/copilot-review.db"),
 		inProgressThresholdSec: getEnvInt("IN_PROGRESS_THRESHOLD_SEC", 30),

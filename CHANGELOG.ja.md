@@ -9,8 +9,6 @@
 
 ## [Unreleased]
 
-## [3.0.0] - BREAKING CHANGE
-
 ### 削除
 
 - **スタンドアロン GitHub OAuth App フローを完全削除。** `internal/auth` パッケージ（handler、session、token cache）を削除。
@@ -33,8 +31,6 @@
 1. このサーバーの前段に [mcp-gateway](https://github.com/mcp-b/mcp-gateway) をデプロイする。
 2. `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`AUTH_MODE` を環境変数から削除する。
 3. MCP クライアントの接続先を mcp-gateway の URL に変更する。stdio クライアントは [mcp-remote](https://github.com/geelen/mcp-remote) を使用する。
-
-> **注意**: [mcp-gateway#48](https://github.com/mcp-b/mcp-gateway/issues/48)（bind_addr/public_url の分離）が解決し、gateway の再認証が安定するまでこのリリースをマージしないこと。
 
 ## [2.5.0] - 2026-04-26
 

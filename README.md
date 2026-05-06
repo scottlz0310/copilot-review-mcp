@@ -45,7 +45,7 @@ docker run --rm -p 127.0.0.1:8083:8083 \
   ghcr.io/scottlz0310/copilot-review-mcp:latest
 ```
 
-Configure mcp-gateway to proxy `http://localhost:8083` (see [mcp-gateway docs](https://github.com/mcp-b/mcp-gateway)).
+Configure mcp-gateway to proxy the internal address of this server as seen **from the gateway** (e.g., `http://copilot-review-mcp:8083` on a shared Docker network, or `http://host.docker.internal:8083` on Docker Desktop). See [mcp-gateway docs](https://github.com/mcp-b/mcp-gateway).
 
 **For stdio clients** (Claude Desktop, etc.) use [mcp-remote](https://github.com/geelen/mcp-remote):
 
@@ -54,7 +54,7 @@ Configure mcp-gateway to proxy `http://localhost:8083` (see [mcp-gateway docs](h
   "mcpServers": {
     "copilot-review": {
       "command": "npx",
-      "args": ["mcp-remote", "https://your-gateway-url/mcp"]
+      "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
   }
 }

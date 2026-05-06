@@ -155,7 +155,7 @@ mcp-gateway の URL をクライアントに登録する:
   "mcpServers": {
     "copilot-review-mcp": {
       "command": "npx",
-      "args": ["mcp-remote", "https://your-gateway-url/mcp"]
+      "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
   }
 }

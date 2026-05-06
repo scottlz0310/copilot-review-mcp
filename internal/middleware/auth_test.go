@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestAuth_GatewayMode(t *testing.T) {
+func TestAuth_TrustProxyHeaders(t *testing.T) {
 	tests := []struct {
 		name           string
 		proxyLogin     string
