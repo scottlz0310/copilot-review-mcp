@@ -33,7 +33,7 @@
 `AUTH_MODE=standalone` または `AUTH_MODE=gateway` で運用していた場合:
 
 1. このサーバーの前段に [mcp-gateway](https://github.com/mcp-b/mcp-gateway) をデプロイする。
-2. `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`AUTH_MODE` を環境変数から削除する。
+2. 以下の環境変数を削除する: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`AUTH_MODE`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`（削除された変数の全リストは上記「破壊的変更」を参照）。
 3. MCP クライアントの接続先を mcp-gateway の URL に変更する。stdio クライアントは [mcp-remote](https://github.com/geelen/mcp-remote) を使用する。
 
 ## [2.5.0] - 2026-04-26
