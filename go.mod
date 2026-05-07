@@ -1,6 +1,6 @@
 module github.com/scottlz0310/copilot-review-mcp
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/google/go-github/v85 v85.0.0
