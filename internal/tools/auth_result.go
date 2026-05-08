@@ -9,13 +9,16 @@ import (
 	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
 )
 
-// authErrResult converts an *autherr.AuthError into a *mcp.CallToolResult with JSON
-// text content. IsError is set to true so AI agents treat it as a blocking failure.
+// authErrResult converts an *autherr.AuthError into a *mcp.CallToolResult.
+// Content carries a JSON text representation and StructuredContent provides
+// the same data as a parsed object. IsError is set to true so AI agents
+// treat it as a blocking failure that requires user action.
 func authErrResult(ae *autherr.AuthError) *mcp.CallToolResult {
 	b, _ := json.Marshal(ae)
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
-		IsError: true,
+		Content:           []mcp.Content{&mcp.TextContent{Text: string(b)}},
+		StructuredContent: ae,
+		IsError:           true,
 	}
 }
 

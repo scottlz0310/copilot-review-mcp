@@ -17,6 +17,7 @@ import (
 	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
 	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
 	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
 )
 
 // errorProvider returns a githubClientProvider that always returns the given error.
@@ -199,6 +200,62 @@ func TestGetReviewThreadsHandlerReauthRequired(t *testing.T) {
 	handler := getReviewThreadsHandler(staticProvider(make401GitHubClient(srv)))
 	result, _, err := handler(context.Background(), nil, GetReviewThreadsInput{Owner: "o", Repo: "r", PR: 1})
 	assertAuthResult(t, result, err, autherr.REAUTH_REQUIRED)
+}
+
+// ── watch handler AUTH_REQUIRED tests ──
+
+// newMinimalWatchManager returns a watch.Manager for unit tests.
+// It uses an in-memory DB and no background polling.
+func newMinimalWatchManager(t *testing.T) *watch.Manager {
+	t.Helper()
+	db := openWatchToolsTestDB(t)
+	return watch.NewManager(db, watch.Options{Threshold: 30 * time.Second})
+}
+
+func TestStartWatchHandlerAuthRequired(t *testing.T) {
+	manager := newMinimalWatchManager(t)
+	handler := startWatchHandler(manager)
+	// nil request → no token/login in context → AUTH_REQUIRED
+	result, _, err := handler(context.Background(), nil, StartReviewWatchInput{Owner: "o", Repo: "r", PR: 1})
+	assertAuthResult(t, result, err, autherr.AUTH_REQUIRED)
+}
+
+func TestGetWatchStatusHandlerAuthRequired(t *testing.T) {
+	manager := newMinimalWatchManager(t)
+	handler := getWatchStatusHandler(manager)
+	result, _, err := handler(context.Background(), nil, GetReviewWatchStatusInput{WatchID: "some-id"})
+	assertAuthResult(t, result, err, autherr.AUTH_REQUIRED)
+}
+
+func TestListWatchesHandlerAuthRequired(t *testing.T) {
+	manager := newMinimalWatchManager(t)
+	handler := listWatchesHandler(manager)
+	result, _, err := handler(context.Background(), nil, ListReviewWatchesInput{})
+	assertAuthResult(t, result, err, autherr.AUTH_REQUIRED)
+}
+
+func TestCancelWatchHandlerAuthRequired(t *testing.T) {
+	manager := newMinimalWatchManager(t)
+	handler := cancelWatchHandler(manager)
+	result, _, err := handler(context.Background(), nil, CancelReviewWatchInput{WatchID: "some-id"})
+	assertAuthResult(t, result, err, autherr.AUTH_REQUIRED)
+}
+
+// ── StructuredContent is populated ──
+
+func TestAuthErrResultHasStructuredContent(t *testing.T) {
+	ae := autherr.NewReauthRequired()
+	result := authErrResult(ae)
+	if result.StructuredContent == nil {
+		t.Fatal("StructuredContent is nil, want *autherr.AuthError")
+	}
+	sc, ok := result.StructuredContent.(*autherr.AuthError)
+	if !ok {
+		t.Fatalf("StructuredContent type = %T, want *autherr.AuthError", result.StructuredContent)
+	}
+	if sc.ErrorType != autherr.REAUTH_REQUIRED {
+		t.Errorf("StructuredContent.ErrorType = %q, want %q", sc.ErrorType, autherr.REAUTH_REQUIRED)
+	}
 }
 
 // ── tryAuthResult unit test ──
