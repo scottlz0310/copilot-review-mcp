@@ -59,11 +59,17 @@ func getReviewThreadsHandler(
 		}
 		gh, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, GetReviewThreadsOutput{}, nil
+			}
 			return nil, GetReviewThreadsOutput{}, err
 		}
 
 		rawThreads, err := gh.GetReviewThreads(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, GetReviewThreadsOutput{}, nil
+			}
 			return nil, GetReviewThreadsOutput{}, err
 		}
 
@@ -131,16 +137,25 @@ func replyToThreadHandler(
 		}
 		gh, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyToThreadOutput{}, nil
+			}
 			return nil, ReplyToThreadOutput{}, err
 		}
 
 		alreadyResolved, err := gh.IsThreadResolved(ctx, in.ThreadID)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyToThreadOutput{}, nil
+			}
 			return nil, ReplyToThreadOutput{}, err
 		}
 
 		result, err := gh.ReplyToThread(ctx, in.ThreadID, in.Body)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyToThreadOutput{}, nil
+			}
 			return nil, ReplyToThreadOutput{}, err
 		}
 
@@ -188,11 +203,17 @@ func resolveThreadHandler(
 		}
 		gh, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ResolveThreadOutput{}, nil
+			}
 			return nil, ResolveThreadOutput{}, err
 		}
 
 		alreadyResolved, err := gh.ResolveThread(ctx, in.ThreadID)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ResolveThreadOutput{}, nil
+			}
 			return nil, ResolveThreadOutput{}, err
 		}
 		return nil, ResolveThreadOutput{
@@ -242,6 +263,9 @@ func replyAndResolveHandler(
 		}
 		gh, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyAndResolveOutput{}, nil
+			}
 			return nil, ReplyAndResolveOutput{}, err
 		}
 
@@ -250,6 +274,9 @@ func replyAndResolveHandler(
 		// Step 1: Reply.
 		replyResult, err := gh.ReplyToThread(ctx, in.ThreadID, in.Body)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyAndResolveOutput{}, nil
+			}
 			errStr := err.Error()
 			out.ReplyError = &errStr
 			// replied == false → skip Resolve.
@@ -264,6 +291,9 @@ func replyAndResolveHandler(
 		}
 		_, err = gh.ResolveThread(ctx, in.ThreadID)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, ReplyAndResolveOutput{}, nil
+			}
 			errStr := err.Error()
 			out.ResolveError = &errStr
 			return nil, out, nil

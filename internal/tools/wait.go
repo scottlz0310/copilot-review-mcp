@@ -77,6 +77,9 @@ func waitHandler(
 		start := time.Now()
 		ghClient, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, WaitOutput{}, nil
+			}
 			return nil, WaitOutput{}, err
 		}
 
@@ -107,6 +110,9 @@ func waitHandler(
 			if err != nil {
 				if isCancellation(err) {
 					return nil, buildCancelledOutput(lastData, lastEntry, lastStatus, poll, time.Since(start)), nil
+				}
+				if result, ok := tryAuthResult(err); ok {
+					return result, WaitOutput{}, nil
 				}
 				return nil, WaitOutput{}, err
 			}
