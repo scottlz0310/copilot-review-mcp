@@ -139,7 +139,7 @@ Point the client at your mcp-gateway URL:
 ```json
 {
   "mcpServers": {
-    "copilot-review-mcp": {
+    "copilot-review": {
       "type": "http",
       "url": "https://your-gateway-url/mcp"
     }
@@ -156,7 +156,7 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 ```json
 {
   "mcpServers": {
-    "copilot-review-mcp": {
+    "copilot-review": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
