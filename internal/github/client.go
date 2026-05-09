@@ -387,7 +387,7 @@ func ClassifyGitHubError(err error) *autherr.AuthError {
 		return autherr.NewPermissionDenied()
 	case strings.Contains(msg, "404 Not Found"):
 		return autherr.NewNotFound()
-	case strings.Contains(msg, "422 Unprocessable"):
+	case strings.Contains(msg, "422 Unprocessable"), strings.Contains(msg, "400 Bad Request"):
 		return autherr.NewValidationError()
 	case strings.Contains(msg, "500 Internal Server Error"),
 		strings.Contains(msg, "502 Bad Gateway"),

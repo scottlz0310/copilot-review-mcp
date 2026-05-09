@@ -442,24 +442,47 @@ func TestStatusHandlerTransientUpstreamError(t *testing.T) {
 
 func TestTryAuthResultNewErrorTypes(t *testing.T) {
 	cases := []struct {
-		name     string
-		fn       func() *autherr.AuthError
-		wantType autherr.AuthErrorType
+		name          string
+		err           error
+		wantType      autherr.AuthErrorType
+		wantRetryable bool
 	}{
-		{"PERMISSION_DENIED", autherr.NewPermissionDenied, autherr.PERMISSION_DENIED},
-		{"NOT_FOUND", autherr.NewNotFound, autherr.NOT_FOUND},
-		{"VALIDATION_ERROR", autherr.NewValidationError, autherr.VALIDATION_ERROR},
-		{"TRANSIENT_UPSTREAM_ERROR", autherr.NewTransientUpstreamError, autherr.TRANSIENT_UPSTREAM_ERROR},
+		{"PERMISSION_DENIED", autherr.NewPermissionDenied(), autherr.PERMISSION_DENIED, false},
+		{"NOT_FOUND", autherr.NewNotFound(), autherr.NOT_FOUND, false},
+		{"VALIDATION_ERROR", autherr.NewValidationError(), autherr.VALIDATION_ERROR, false},
+		{"TRANSIENT_UPSTREAM_ERROR", autherr.NewTransientUpstreamError(), autherr.TRANSIENT_UPSTREAM_ERROR, true},
+		{
+			"RATE_LIMITED_primary (via RateLimitError)",
+			&github.RateLimitError{
+				Rate:     github.Rate{},
+				Response: &http.Response{StatusCode: http.StatusForbidden},
+				Message:  "rate limit exceeded",
+			},
+			autherr.RATE_LIMITED,
+			true,
+		},
+		{
+			"RATE_LIMITED_secondary (via AbuseRateLimitError)",
+			&github.AbuseRateLimitError{
+				Response: &http.Response{StatusCode: http.StatusForbidden},
+				Message:  "secondary rate limit",
+			},
+			autherr.RATE_LIMITED,
+			false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, ok := tryAuthResult(tc.fn())
+			result, ok := tryAuthResult(tc.err)
 			if !ok {
 				t.Fatalf("tryAuthResult() ok = false for %s", tc.name)
 			}
 			ae := decodeAuthError(t, result)
 			if ae.ErrorType != tc.wantType {
 				t.Errorf("ErrorType = %q, want %q", ae.ErrorType, tc.wantType)
+			}
+			if ae.Retryable != tc.wantRetryable {
+				t.Errorf("Retryable = %v, want %v", ae.Retryable, tc.wantRetryable)
 			}
 		})
 	}

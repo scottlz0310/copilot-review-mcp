@@ -112,8 +112,8 @@ func NewPermissionDenied() *AuthError {
 // and false for secondary / abuse rate limits.
 // safeToContinue should be true only for primary rate limits where a timed retry is feasible.
 func NewRateLimited(retryable, safeToContinue bool) *AuthError {
-	msg := "GitHub secondary rate limit hit. Backing off before retrying is required."
-	action := "Stop the review cycle and wait before retrying. Do not retry immediately."
+	msg := "GitHub secondary (abuse) rate limit hit. The token has been temporarily blocked by GitHub. Do not retry automatically."
+	action := "Stop all operations and report to the user. Manual resolution is required; do not retry without user guidance."
 	if retryable && safeToContinue {
 		msg = "GitHub rate limit exceeded. Wait until the rate-limit window resets before retrying."
 		action = "Wait until the rate-limit window resets, then retry the operation."
