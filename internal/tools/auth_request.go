@@ -2,13 +2,13 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
 	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
 	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
 )
@@ -19,7 +19,7 @@ func newGitHubClientProvider(threshold time.Duration, invalidate func(string)) g
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*ghclient.Client, error) {
 		token := tokenFromToolRequest(ctx, req)
 		if token == "" {
-			return nil, fmt.Errorf("authenticated GitHub token is required")
+			return nil, autherr.NewAuthRequired()
 		}
 		return ghclient.NewClient(ctx, token, threshold, invalidate), nil
 	}

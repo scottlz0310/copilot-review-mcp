@@ -42,6 +42,9 @@ func requestHandler(
 		}
 		ghClient, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, RequestOutput{}, nil
+			}
 			return nil, RequestOutput{}, err
 		}
 
@@ -61,6 +64,9 @@ func requestHandler(
 		// Guard: also check the live GitHub reviewer list.
 		data, err := ghClient.GetReviewData(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, RequestOutput{}, nil
+			}
 			return nil, RequestOutput{}, err
 		}
 
@@ -75,6 +81,9 @@ func requestHandler(
 
 		// Request the review via GitHub API.
 		if err := ghClient.RequestCopilotReview(ctx, in.Owner, in.Repo, in.PR); err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, RequestOutput{}, nil
+			}
 			return nil, RequestOutput{}, err
 		}
 

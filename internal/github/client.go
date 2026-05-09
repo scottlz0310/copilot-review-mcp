@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v85/github"
@@ -309,9 +310,19 @@ func DeriveStatusWithThreshold(_ time.Duration, data *ReviewData, requestedAt *t
 }
 
 // IsAuthError reports whether err is a GitHub authentication failure.
+// It handles both REST API errors (*github.ErrorResponse with HTTP 401) and
+// GraphQL errors from shurcooL/githubv4 whose message contains "401 Unauthorized".
 func IsAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
 	var ghErr *github.ErrorResponse
-	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusUnauthorized
+	if errors.As(err, &ghErr) {
+		return ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusUnauthorized
+	}
+	// shurcooL/githubv4 returns a plain error with the message
+	// "non-200 OK status code: 401 Unauthorized body: ..." for HTTP 401.
+	return strings.Contains(err.Error(), "401 Unauthorized")
 }
 
 // prNodeIDQuery fetches the GraphQL node ID for a pull request.

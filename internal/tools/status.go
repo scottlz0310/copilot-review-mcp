@@ -49,11 +49,17 @@ func statusHandler(
 
 		ghClient, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, GetStatusOutput{}, nil
+			}
 			return nil, GetStatusOutput{}, err
 		}
 
 		data, err := ghClient.GetReviewData(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, GetStatusOutput{}, nil
+			}
 			return nil, GetStatusOutput{}, err
 		}
 

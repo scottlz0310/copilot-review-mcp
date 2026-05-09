@@ -9,6 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
 	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
 	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
 )
@@ -146,7 +147,7 @@ func startWatchHandler(
 		login := loginFromToolRequest(ctx, req)
 		token := tokenFromToolRequest(ctx, req)
 		if login == "" || token == "" {
-			return nil, StartReviewWatchOutput{}, fmt.Errorf("authenticated GitHub login and token are required")
+			return authErrResult(autherr.NewAuthRequired()), StartReviewWatchOutput{}, nil
 		}
 
 		snapshot, reused, err := manager.Start(watch.StartInput{
@@ -176,7 +177,7 @@ func getWatchStatusHandler(
 	return func(ctx context.Context, req *mcp.CallToolRequest, in GetReviewWatchStatusInput) (*mcp.CallToolResult, GetReviewWatchStatusOutput, error) {
 		login := loginFromToolRequest(ctx, req)
 		if login == "" {
-			return nil, GetReviewWatchStatusOutput{}, fmt.Errorf("authenticated GitHub login is required")
+			return authErrResult(autherr.NewAuthRequired()), GetReviewWatchStatusOutput{}, nil
 		}
 
 		var (
@@ -213,7 +214,7 @@ func listWatchesHandler(
 	return func(ctx context.Context, req *mcp.CallToolRequest, in ListReviewWatchesInput) (*mcp.CallToolResult, ListReviewWatchesOutput, error) {
 		login := loginFromToolRequest(ctx, req)
 		if login == "" {
-			return nil, ListReviewWatchesOutput{}, fmt.Errorf("authenticated GitHub login is required")
+			return authErrResult(autherr.NewAuthRequired()), ListReviewWatchesOutput{}, nil
 		}
 		if in.Repo != "" && in.Owner == "" {
 			return nil, ListReviewWatchesOutput{}, fmt.Errorf("owner is required when repo is specified")
@@ -263,7 +264,7 @@ func cancelWatchHandler(
 	return func(ctx context.Context, req *mcp.CallToolRequest, in CancelReviewWatchInput) (*mcp.CallToolResult, CancelReviewWatchOutput, error) {
 		login := loginFromToolRequest(ctx, req)
 		if login == "" {
-			return nil, CancelReviewWatchOutput{}, fmt.Errorf("authenticated GitHub login is required")
+			return authErrResult(autherr.NewAuthRequired()), CancelReviewWatchOutput{}, nil
 		}
 
 		var (

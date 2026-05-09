@@ -116,6 +116,9 @@ func cycleStatusHandler(
 
 		gh, err := clientProvider(ctx, req)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, CycleStatusOutput{}, nil
+			}
 			return nil, CycleStatusOutput{}, err
 		}
 
@@ -137,6 +140,9 @@ func cycleStatusHandler(
 		// Auto-detect CI status early so all exit paths return accurate ci_ok.
 		ciAllSuccess, err := gh.GetCIStatus(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, CycleStatusOutput{}, nil
+			}
 			return nil, CycleStatusOutput{}, fmt.Errorf("failed to get CI status: %w", err)
 		}
 
@@ -162,6 +168,9 @@ func cycleStatusHandler(
 		// ── Fetch review threads ─────────────────────────────────────────────
 		rawThreads, err := gh.GetReviewThreads(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, CycleStatusOutput{}, nil
+			}
 			return nil, CycleStatusOutput{}, fmt.Errorf("failed to fetch review threads: %w", err)
 		}
 
@@ -196,6 +205,9 @@ func cycleStatusHandler(
 		// ── Fetch current review status ──────────────────────────────────────
 		reviewData, err := gh.GetReviewData(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, CycleStatusOutput{}, nil
+			}
 			return nil, CycleStatusOutput{}, fmt.Errorf("failed to fetch review data: %w", err)
 		}
 		if reviewData.RateLimitRemaining < 10 {
