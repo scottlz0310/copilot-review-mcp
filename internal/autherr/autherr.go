@@ -36,8 +36,8 @@ func (e *AuthError) Error() string {
 	return e.Message
 }
 
-// NewAuthRequired returns an AUTH_REQUIRED error for missing credentials.
-// Use when the request carries no GitHub token at all.
+// NewAuthRequired returns an AUTH_REQUIRED error for missing authentication context.
+// Use when the request carries no GitHub token or the user identity (login) is absent.
 func NewAuthRequired() *AuthError {
 	return &AuthError{
 		OK:                     false,
@@ -46,7 +46,7 @@ func NewAuthRequired() *AuthError {
 		Retryable:              false,
 		UserActionRequired:     true,
 		SafeToContinue:         false,
-		Message:                "GitHub authentication credentials are missing. Please provide a valid token before continuing.",
+		Message:                "GitHub authentication context is missing. Please sign in with a valid GitHub account before continuing.",
 		RecommendedAgentAction: "Stop the current operation and ask the user to provide GitHub authentication credentials.",
 	}
 }
