@@ -23,8 +23,8 @@ PR レビュー対応サイクルを自律実行するスキル。
 
 | サーバー | 役割 | 参照 |
 |---------|------|------|
-| `copilot-review-mcp` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
-| GitHub MCP サーバー | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
+| `copilot-review` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
+| `github` | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
 
 ### プレースホルダーの読み替え
 
@@ -32,8 +32,8 @@ PR レビュー対応サイクルを自律実行するスキル。
 
 | プレースホルダー | 役割 | VS Code での例 |
 |----------------|------|---------------|
-| `{CRM}` | copilot-review-mcp ツール | `mcp_copilot-review-mcp_*` |
-| `{GH}` | GitHub MCP ツール | `mcp_github-mcp-server-docker_*` |
+| `{CRM}` | copilot-review-mcp ツール | `mcp_copilot-review_*` |
+| `{GH}` | GitHub MCP ツール | `mcp_github_*` |
 
 > IDE ごとのツール名プレフィックスは `make gen-config-crm` で生成した設定ファイルで確認できます。
 
