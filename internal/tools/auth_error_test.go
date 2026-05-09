@@ -3,10 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -285,4 +288,72 @@ func TestTryAuthResult(t *testing.T) {
 			t.Error("tryAuthResult(context.Canceled) should return (nil, false)")
 		}
 	})
+}
+
+// newReplySucceedResolveFail401Server returns a server where ReplyToThread succeeds
+// but the resolveReviewThread GraphQL mutation returns 401 Unauthorized.
+func newReplySucceedResolveFail401Server(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// REST: CreateCommentInReplyTo — path starts with /repos/
+		if strings.HasPrefix(r.URL.Path, "/repos/") {
+			_, _ = fmt.Fprint(w, `{"id":999,"body":"reply"}`)
+			return
+		}
+
+		// GraphQL: distinguish queries by body content.
+		body, _ := io.ReadAll(r.Body)
+		bs := string(body)
+
+		switch {
+		case strings.Contains(bs, "resolveReviewThread"):
+			// Resolve mutation → 401
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = fmt.Fprint(w, `{"message":"Bad credentials"}`)
+		case strings.Contains(bs, "databaseId"):
+			// threadMetadataQuery → return minimal metadata
+			_, _ = fmt.Fprint(w, `{"data":{"node":{"pullRequest":{"number":1,"repository":{"name":"r","owner":{"login":"o"}}},"comments":{"nodes":[{"databaseId":42}]}}}}`)
+		default:
+			// threadNodeQuery (isResolved check) → not yet resolved
+			_, _ = fmt.Fprint(w, `{"data":{"node":{"isResolved":false}}}`)
+		}
+	}))
+	return srv
+}
+
+// TestReplyAndResolveHandlerResolveReauthRequired verifies that when the
+// resolveReviewThread mutation returns 401, the handler sets ResolveError to a
+// canonical REAUTH_REQUIRED string instead of a hard-coded message.
+func TestReplyAndResolveHandlerResolveReauthRequired(t *testing.T) {
+	srv := newReplySucceedResolveFail401Server(t)
+	t.Cleanup(srv.Close)
+
+	handler := replyAndResolveHandler(staticProvider(make401GitHubClient(srv)))
+	result, out, err := handler(
+		context.Background(), nil,
+		ReplyAndResolveInput{ThreadID: "PRRT_abc", Body: "hello", Resolve: true},
+	)
+	if err != nil {
+		t.Fatalf("handler returned unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("result = %v, want nil", result)
+	}
+	if !out.Replied {
+		t.Error("out.Replied = false, want true")
+	}
+	if out.CommentID == nil {
+		t.Error("out.CommentID = nil, want non-nil")
+	}
+	if out.Resolved {
+		t.Error("out.Resolved = true, want false")
+	}
+	if out.ResolveError == nil {
+		t.Fatal("out.ResolveError = nil, want REAUTH_REQUIRED error string")
+	}
+	if !strings.HasPrefix(*out.ResolveError, string(autherr.REAUTH_REQUIRED)) {
+		t.Errorf("ResolveError = %q, want prefix %q", *out.ResolveError, autherr.REAUTH_REQUIRED)
+	}
 }

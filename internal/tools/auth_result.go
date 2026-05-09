@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -20,6 +21,23 @@ func authErrResult(ae *autherr.AuthError) *mcp.CallToolResult {
 		StructuredContent: ae,
 		IsError:           true,
 	}
+}
+
+// authErrString returns a canonical "<ErrorType>: <Message>" string for auth
+// errors. It mirrors tryAuthResult's detection logic but returns a plain string
+// suitable for embedding in output fields rather than a full MCP result.
+func authErrString(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	if ae, ok := autherr.AsAuthError(err); ok {
+		return fmt.Sprintf("%s: %s", ae.ErrorType, ae.Message), true
+	}
+	if ghclient.IsAuthError(err) {
+		ae := autherr.NewReauthRequired()
+		return fmt.Sprintf("%s: %s", ae.ErrorType, ae.Message), true
+	}
+	return "", false
 }
 
 // tryAuthResult checks whether err represents an authentication failure and, if so,
