@@ -7,7 +7,7 @@ description: Copilot レビュー完了を async watch で待機してから PR 
 
 [English](pr-review-cycle.md)
 
-copilot-review-mcp の watch ツール群を使い、Copilot レビュー完了を **async watch** で待機してから
+`copilot-review` サーバーの watch ツール群を使い、Copilot レビュー完了を **async watch** で待機してから
 PR レビュー対応サイクルを自律実行するスキル。
 
 > **このファイルについて**  
@@ -23,8 +23,8 @@ PR レビュー対応サイクルを自律実行するスキル。
 
 | サーバー | 役割 | 参照 |
 |---------|------|------|
-| `copilot-review-mcp` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
-| GitHub MCP サーバー | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
+| `copilot-review` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
+| `github` | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
 
 ### プレースホルダーの読み替え
 
@@ -32,10 +32,10 @@ PR レビュー対応サイクルを自律実行するスキル。
 
 | プレースホルダー | 役割 | VS Code での例 |
 |----------------|------|---------------|
-| `{CRM}` | copilot-review-mcp ツール | `mcp_copilot-review-mcp_*` |
-| `{GH}` | GitHub MCP ツール | `mcp_github-mcp-server-docker_*` |
+| `{CRM}` | `copilot-review` サーバーツール | `mcp_copilot-review_*` |
+| `{GH}` | `github` サーバーツール | `mcp_github_*` |
 
-> IDE ごとのツール名プレフィックスは `make gen-config-crm` で生成した設定ファイルで確認できます。
+> ツール名プレフィックスはお使いの MCP クライアント設定によって異なります。IDE の MCP 設定で正確なプレフィックスを確認してください。
 
 ---
 
