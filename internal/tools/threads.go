@@ -291,8 +291,10 @@ func replyAndResolveHandler(
 		}
 		_, err = gh.ResolveThread(ctx, in.ThreadID)
 		if err != nil {
-			if result, ok := tryAuthResult(err); ok {
-				return result, ReplyAndResolveOutput{}, nil
+			if _, ok := tryAuthResult(err); ok {
+				errStr := "resolve failed: re-authentication is required"
+				out.ResolveError = &errStr
+				return nil, out, nil
 			}
 			errStr := err.Error()
 			out.ResolveError = &errStr
