@@ -24,9 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Skill templates (`docs/skills/`) updated to use MCP server key `copilot-review` (was `copilot-review-mcp`) and `github` (was `github-mcp-server-docker`), matching the defaults used in mcp-docker / mcp-gateway setups. Usage docs updated accordingly (#23).
+- Skill templates (`docs/skills/`) updated to use MCP server key `copilot-review` (was `copilot-review-mcp`) and `github` (was `github-mcp-server-docker`), matching the defaults used in mcp-docker / mcp-gateway setups (#23). Usage docs (`docs/usage.md`, `docs/usage.ja.md`) aligned to the same convention.
 
-## [3.0.0]- 2026-05-06
+## [3.0.0] - 2026-05-06
 
 ### Removed
 

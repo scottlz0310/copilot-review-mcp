@@ -24,9 +24,9 @@
 
 ### 変更
 
-- skill テンプレート（`docs/skills/`）の MCP サーバーキーを `copilot-review`（旧 `copilot-review-mcp`）と `github`（旧 `github-mcp-server-docker`）に統一。mcp-docker / mcp-gateway のデフォルト設定に合わせた規約変更。usage docs も合わせて更新（#23）。
+- skill テンプレート（`docs/skills/`）の MCP サーバーキーを `copilot-review`（旧 `copilot-review-mcp`）と `github`（旧 `github-mcp-server-docker`）に統一。mcp-docker / mcp-gateway のデフォルト設定に合わせた規約変更（#23）。usage docs（`docs/usage.md`、`docs/usage.ja.md`）も同規約に合わせて更新。
 
-## [3.0.0]- 2026-05-06
+## [3.0.0] - 2026-05-06
 
 ### 削除
 
