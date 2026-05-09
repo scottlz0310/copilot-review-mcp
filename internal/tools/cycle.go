@@ -205,6 +205,9 @@ func cycleStatusHandler(
 		// ── Fetch current review status ──────────────────────────────────────
 		reviewData, err := gh.GetReviewData(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
+			if result, ok := tryAuthResult(err); ok {
+				return result, CycleStatusOutput{}, nil
+			}
 			return nil, CycleStatusOutput{}, fmt.Errorf("failed to fetch review data: %w", err)
 		}
 		if reviewData.RateLimitRemaining < 10 {
