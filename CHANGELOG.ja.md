@@ -22,7 +22,7 @@
 - **`ClassifyGitHubError(err error) *autherr.AuthError`** を `internal/github/client.go` に追加。REST `*github.ErrorResponse`、`*github.RateLimitError`、`*github.AbuseRateLimitError`、shurcooL/githubv4 の文字列マッチ、既分類済みの `*autherr.AuthError` を含む任意の GitHub API エラーを適切な構造化エラー型に変換する単一エントリポイント。
 - `internal/tools/auth_result.go` の `tryAuthResult` および `authErrString` が `IsAuthError` の代わりに `ClassifyGitHubError` を呼ぶようになり、8 種類のエラー型すべてに対してハンドラごとの変更なしに構造化エラーを返せるようになった。
 
-
+## [3.0.0] - 2026-05-06
 
 ### 削除
 
