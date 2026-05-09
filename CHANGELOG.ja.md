@@ -9,6 +9,19 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-05-09
+
+### 追加
+
+- **5 つの新しい構造化エラー型** を `internal/autherr` に追加し、[Issue #21](https://github.com/scottlz0310/copilot-review-mcp/issues/21) を完結:
+  - `PERMISSION_DENIED` — HTTP 403 レスポンス（rate limit 以外）
+  - `RATE_LIMITED` — プライマリ rate limit（`*github.RateLimitError`）とセカンダリ/abuse rate limit（`*github.AbuseRateLimitError`）。`retryable` と `safe_to_continue` は状況依存
+  - `NOT_FOUND` — HTTP 404 レスポンス
+  - `VALIDATION_ERROR` — HTTP 400 / 422 レスポンス
+  - `TRANSIENT_UPSTREAM_ERROR` — HTTP 5xx レスポンス（retryable）
+- **`ClassifyGitHubError(err error) *autherr.AuthError`** を `internal/github/client.go` に追加。REST `*github.ErrorResponse`、`*github.RateLimitError`、`*github.AbuseRateLimitError`、shurcooL/githubv4 の文字列マッチ、既分類済みの `*autherr.AuthError` を含む任意の GitHub API エラーを適切な構造化エラー型に変換する単一エントリポイント。
+- `internal/tools/auth_result.go` の `tryAuthResult` および `authErrString` が `IsAuthError` の代わりに `ClassifyGitHubError` を呼ぶようになり、8 種類のエラー型すべてに対してハンドラごとの変更なしに構造化エラーを返せるようになった。
+
 ## [3.0.0] - 2026-05-06
 
 ### 削除

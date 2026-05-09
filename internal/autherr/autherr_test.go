@@ -16,6 +16,12 @@ func TestAuthErrorImplementsError(t *testing.T) {
 		{"NewAuthRequired", autherr.NewAuthRequired},
 		{"NewReauthRequired", autherr.NewReauthRequired},
 		{"NewTokenRefreshFailed", autherr.NewTokenRefreshFailed},
+		{"NewPermissionDenied", autherr.NewPermissionDenied},
+		{"NewRateLimited(true,true)", func() *autherr.AuthError { return autherr.NewRateLimited(true, true) }},
+		{"NewRateLimited(false,false)", func() *autherr.AuthError { return autherr.NewRateLimited(false, false) }},
+		{"NewNotFound", autherr.NewNotFound},
+		{"NewValidationError", autherr.NewValidationError},
+		{"NewTransientUpstreamError", autherr.NewTransientUpstreamError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -33,17 +39,26 @@ func TestAuthErrorFields(t *testing.T) {
 		name          string
 		fn            func() *autherr.AuthError
 		wantErrorType autherr.AuthErrorType
+		wantRetryable bool
+		wantUserAction bool
+		wantSafeCont  bool
 	}{
-		{"NewAuthRequired", autherr.NewAuthRequired, autherr.AUTH_REQUIRED},
-		{"NewReauthRequired", autherr.NewReauthRequired, autherr.REAUTH_REQUIRED},
-		{"NewTokenRefreshFailed", autherr.NewTokenRefreshFailed, autherr.TOKEN_REFRESH_FAILED},
+		{"NewAuthRequired", autherr.NewAuthRequired, autherr.AUTH_REQUIRED, false, true, false},
+		{"NewReauthRequired", autherr.NewReauthRequired, autherr.REAUTH_REQUIRED, false, true, false},
+		{"NewTokenRefreshFailed", autherr.NewTokenRefreshFailed, autherr.TOKEN_REFRESH_FAILED, false, true, false},
+		{"NewPermissionDenied", autherr.NewPermissionDenied, autherr.PERMISSION_DENIED, false, true, false},
+		{"NewRateLimited(true,true)", func() *autherr.AuthError { return autherr.NewRateLimited(true, true) }, autherr.RATE_LIMITED, true, false, true},
+		{"NewRateLimited(false,false)", func() *autherr.AuthError { return autherr.NewRateLimited(false, false) }, autherr.RATE_LIMITED, false, false, false},
+		{"NewNotFound", autherr.NewNotFound, autherr.NOT_FOUND, false, false, false},
+		{"NewValidationError", autherr.NewValidationError, autherr.VALIDATION_ERROR, false, false, false},
+		{"NewTransientUpstreamError", autherr.NewTransientUpstreamError, autherr.TRANSIENT_UPSTREAM_ERROR, true, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ae := tt.fn()
 
 			if ae.OK {
-				t.Error("OK must be false for auth errors")
+				t.Error("OK must be false for all structured errors")
 			}
 			if ae.ErrorType != tt.wantErrorType {
 				t.Errorf("ErrorType = %q, want %q", ae.ErrorType, tt.wantErrorType)
@@ -51,14 +66,14 @@ func TestAuthErrorFields(t *testing.T) {
 			if ae.Severity != "blocking" {
 				t.Errorf("Severity = %q, want %q", ae.Severity, "blocking")
 			}
-			if ae.Retryable {
-				t.Error("Retryable must be false")
+			if ae.Retryable != tt.wantRetryable {
+				t.Errorf("Retryable = %v, want %v", ae.Retryable, tt.wantRetryable)
 			}
-			if !ae.UserActionRequired {
-				t.Error("UserActionRequired must be true")
+			if ae.UserActionRequired != tt.wantUserAction {
+				t.Errorf("UserActionRequired = %v, want %v", ae.UserActionRequired, tt.wantUserAction)
 			}
-			if ae.SafeToContinue {
-				t.Error("SafeToContinue must be false")
+			if ae.SafeToContinue != tt.wantSafeCont {
+				t.Errorf("SafeToContinue = %v, want %v", ae.SafeToContinue, tt.wantSafeCont)
 			}
 			if ae.Message == "" {
 				t.Error("Message must not be empty")
@@ -111,13 +126,19 @@ func TestAsAuthError(t *testing.T) {
 }
 
 func TestAuthErrorTypes(t *testing.T) {
-	if autherr.AUTH_REQUIRED != "AUTH_REQUIRED" {
-		t.Errorf("AUTH_REQUIRED = %q, want %q", autherr.AUTH_REQUIRED, "AUTH_REQUIRED")
+	cases := map[autherr.AuthErrorType]string{
+		autherr.AUTH_REQUIRED:            "AUTH_REQUIRED",
+		autherr.REAUTH_REQUIRED:          "REAUTH_REQUIRED",
+		autherr.TOKEN_REFRESH_FAILED:     "TOKEN_REFRESH_FAILED",
+		autherr.PERMISSION_DENIED:        "PERMISSION_DENIED",
+		autherr.RATE_LIMITED:             "RATE_LIMITED",
+		autherr.NOT_FOUND:                "NOT_FOUND",
+		autherr.VALIDATION_ERROR:         "VALIDATION_ERROR",
+		autherr.TRANSIENT_UPSTREAM_ERROR: "TRANSIENT_UPSTREAM_ERROR",
 	}
-	if autherr.REAUTH_REQUIRED != "REAUTH_REQUIRED" {
-		t.Errorf("REAUTH_REQUIRED = %q, want %q", autherr.REAUTH_REQUIRED, "REAUTH_REQUIRED")
-	}
-	if autherr.TOKEN_REFRESH_FAILED != "TOKEN_REFRESH_FAILED" {
-		t.Errorf("TOKEN_REFRESH_FAILED = %q, want %q", autherr.TOKEN_REFRESH_FAILED, "TOKEN_REFRESH_FAILED")
+	for got, want := range cases {
+		if string(got) != want {
+			t.Errorf("%s = %q, want %q", want, got, want)
+		}
 	}
 }
