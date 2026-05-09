@@ -139,7 +139,7 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHa
 	// fully initialized, so watchManager is always non-nil.
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "copilot-review-mcp", Version: "3.0.0"},
+		&mcp.Implementation{Name: "copilot-review-mcp", Version: "3.1.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {

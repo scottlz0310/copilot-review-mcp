@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-05-06
+## [3.1.0] - 2026-05-09
+
+### Added
+
+- **Five new structured error types** in `internal/autherr` completing [Issue #21](https://github.com/scottlz0310/copilot-review-mcp/issues/21):
+  - `PERMISSION_DENIED` — HTTP 403 responses (non-rate-limit)
+  - `RATE_LIMITED` — primary (`*github.RateLimitError`) and secondary/abuse (`*github.AbuseRateLimitError`) rate limits; `retryable` and `safe_to_continue` are situation-dependent
+  - `NOT_FOUND` — HTTP 404 responses
+  - `VALIDATION_ERROR` — HTTP 400 / 422 responses
+  - `TRANSIENT_UPSTREAM_ERROR` — HTTP 5xx responses (retryable)
+- **`ClassifyGitHubError(err error) *autherr.AuthError`** in `internal/github/client.go` — a single entry point that classifies any GitHub API error (REST `*github.ErrorResponse`, `*github.RateLimitError`, `*github.AbuseRateLimitError`, shurcooL/githubv4 string-matched errors, and already-classified `*autherr.AuthError`) into the appropriate structured error type.
+- `tryAuthResult` and `authErrString` in `internal/tools/auth_result.go` now call `ClassifyGitHubError` instead of `IsAuthError`, so all tool handlers automatically return structured errors for any of the 8 error types without additional per-handler changes.
+
+
 
 ### Removed
 
