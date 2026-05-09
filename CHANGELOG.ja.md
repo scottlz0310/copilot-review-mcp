@@ -22,7 +22,11 @@
 - **`ClassifyGitHubError(err error) *autherr.AuthError`** を `internal/github/client.go` に追加。REST `*github.ErrorResponse`、`*github.RateLimitError`、`*github.AbuseRateLimitError`、shurcooL/githubv4 の文字列マッチ、既分類済みの `*autherr.AuthError` を含む任意の GitHub API エラーを適切な構造化エラー型に変換する単一エントリポイント。
 - `internal/tools/auth_result.go` の `tryAuthResult` および `authErrString` が `IsAuthError` の代わりに `ClassifyGitHubError` を呼ぶようになり、8 種類のエラー型すべてに対してハンドラごとの変更なしに構造化エラーを返せるようになった。
 
-## [3.0.0] - 2026-05-06
+### 変更
+
+- skill テンプレート（`docs/skills/`）の MCP サーバーキーを `copilot-review`（旧 `copilot-review-mcp`）と `github`（旧 `github-mcp-server-docker`）に統一。mcp-docker / mcp-gateway のデフォルト設定に合わせた規約変更。usage docs も合わせて更新（#23）。
+
+## [3.0.0]- 2026-05-06
 
 ### 削除
 

@@ -139,7 +139,7 @@ mcp-gateway の URL をクライアントに登録する:
 ```json
 {
   "mcpServers": {
-    "copilot-review-mcp": {
+    "copilot-review": {
       "type": "http",
       "url": "https://your-gateway-url/mcp"
     }
@@ -156,7 +156,7 @@ mcp-gateway の URL をクライアントに登録する:
 ```json
 {
   "mcpServers": {
-    "copilot-review-mcp": {
+    "copilot-review": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
