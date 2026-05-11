@@ -59,7 +59,7 @@
 |---|---|---|
 | **① mcp-gateway がトークンをローテーション** | ウォッチ実行中 (最大2時間) に gateway がトークンを更新 | スナップショットトークンが陳腐化。次回ポーリングで HTTP 401 → `FailureReasonAuthExpired` で終了 |
 | **② サーバー再起動** | in-memory ウォッチが消滅、DBには状態が残るが token は未保存 | DB から snapshot を返すが worker は不在。`start_copilot_review_watch` 再呼び出しで新ウォッチが起動 |
-| **③ InvalidateToken が nil** | `server.go:175` で `InvalidateToken: nil` が設定されている | ウォッチクライアントに `invalidatingTransport` がインストールされない。401 時に gateway へのトークン無効化通知が行われない |
+| **③ InvalidateToken が nil** | `server.go:176` で `InvalidateToken: nil` が設定されている | ウォッチクライアントに `invalidatingTransport` がインストールされない。401 時に gateway へのトークン無効化通知が行われない |
 | **④ MCP セッション切断後の resource 通知** | クライアントがウォッチリソースを subscribe 後にセッションが切断 | SDK が `ResourceUpdated` を送出するが、切断済みセッションには届かない |
 
 ---
@@ -97,12 +97,11 @@ GitHub アクセストークン : トークン有効期限まで
 
 ### 仮説4: AUTH_CONTEXT_UNAVAILABLE エラーカテゴリが必要
 
-**→ 現行設計では不要だが、サーバー再起動シナリオで有用**
+**→ 現行設計では不要**
 
 - トークンは常にウォッチ開始時のリクエストから取得されるため、「コンテキストなし」状態は通常発生しない
-- **例外**: サーバー再起動後、DB上の `is_active=true` ウォッチは worker が不在
-  - 現在: `WorkerRunning: false` として報告し、LLM が `start_copilot_review_watch` を再呼び出す
-  - `AUTH_CONTEXT_UNAVAILABLE` を導入すれば再起動後の状態をより明確に伝えられる
+- サーバー再起動後の auth 不在シナリオは `store.Open()` 内の `MarkActiveReviewWatchesStale()` によって**既に解決済み**: 起動時に全 `is_active=1` エントリが即座に `STALE/is_active=0` へ更新されるため、auth が必要な goroutine を持つ active watch は存在しない
+- 現行の Option B (スナップショット設計) で `AUTH_CONTEXT_UNAVAILABLE` が有用な経路はなく、将来 Option C (gateway 委任) を採用した場合に初めて意味を持つ概念
 
 ---
 
@@ -111,21 +110,21 @@ GitHub アクセストークン : トークン有効期限まで
 | 問題 | 修正コンポーネント | 優先度 |
 |---|---|---|
 | トークン陳腐化による `FailureReasonAuthExpired` | **設計上の許容範囲** — LLM が `REAUTH_AND_START_NEW_WATCH` に従えばよい | 低 |
-| `InvalidateToken: nil` (gateway への 401 通知なし) | `copilot-review-mcp` (`server.go:175`) + `mcp-gateway` が無効化 API を提供する必要 | 中 |
+| `InvalidateToken: nil` (gateway への 401 通知なし) | `copilot-review-mcp` (`server.go:176`) + `mcp-gateway` が無効化 API を提供する必要 | 中 |
 | mcp-gateway がトークン更新した際の upstream への通知 | **mcp-gateway** が更新トークンを後続リクエストで注入する | gateway 側の設計次第 |
-| サーバー再起動後の `is_active` ウォッチの不整合 | `copilot-review-mcp` — 起動時に DB の `is_active` ウォッチを `STALE` に移行するクリーンアップ | 中 |
+| サーバー再起動後の `is_active` ウォッチの不整合 | **実装済み** — `store.Open()` 時に `MarkActiveReviewWatchesStale()` が全 active ウォッチを即座に STALE 化する | — |
 
 ---
 
 ## 6. 推奨設計オプション
 
-### 推奨: オプションB (現行) + 起動時クリーンアップ
+### 推奨: オプションB (現行設計) を維持
 
 - トークンスナップショット設計は正しく、追加の複雑さなしにバックグラウンドポーリングを実現
-- 追加で実施すべき:
-  1. **起動時DBクリーンアップ**: 起動時に `is_active=true` の DB エントリを `STALE` に更新し、サーバー再起動後の phantom active watches を解消
-  2. **`InvalidateToken` の活性化**: mcp-gateway が token invalidation endpoint を提供するなら、`server.go` の `InvalidateToken: nil` を実際のコールバックに置き換える
-  3. **新エラー区分**: `AUTH_CONTEXT_UNAVAILABLE` は現行では不要。ただし将来的にオプションC (gateway委任) を採用する場合は導入価値あり
+- 起動時 DB クリーンアップ (`MarkActiveReviewWatchesStale`) は **実装済み** — 再起動後の phantom active watches は既に解消されている
+- 残る未対応項目:
+  1. **`InvalidateToken` の活性化**: mcp-gateway が token invalidation endpoint を提供するなら、`internal/tools/server.go` の `InvalidateToken: nil` (line 176) を実際のコールバックに置き換える
+  2. **新エラー区分**: `AUTH_CONTEXT_UNAVAILABLE` は現行では不要。将来的にオプションC (gateway委任) を採用する場合に導入価値あり
 
 ### オプションC (gateway委任) は長期的に検討
 
@@ -156,14 +155,13 @@ GitHub アクセストークン : トークン有効期限まで
 | `internal/middleware/auth.go` | ヘッダーから login/token を context に注入する認証ミドルウェア |
 | `internal/watch/manager.go` | バックグラウンドウォッチの goroutine 管理、トークンスナップショット、`AUTH_EXPIRED` 検知 |
 | `internal/tools/watch.go` | MCP ツールハンドラ、リクエストから login/token を取り出して Manager に渡す |
-| `internal/tools/server.go` | `BuildStreamableHandler` — `InvalidateToken: nil` の設定箇所 (line 175) |
+| `internal/tools/server.go` | `BuildStreamableHandler` — `InvalidateToken: nil` の設定箇所 (line 176) |
 | `internal/github/client.go` | `invalidatingTransport`、`IsAuthError`、`NewClient` |
 | `cmd/server/main.go` | サーバー起動、auth middleware の適用 |
 
 ---
 
-**結論**: フォローアップ実装 issue として以下の2つを推奨します。
-- `copilot-review-mcp` の起動時 DB クリーンアップ (STALE 移行)
-- mcp-gateway が token invalidation hook を提供する場合の `InvalidateToken` 活性化
+**結論**: 起動時 DB クリーンアップ (`MarkActiveReviewWatchesStale`) は実装済み。フォローアップ実装 issue として残る未対応項目は以下の1つ。
+- mcp-gateway が token invalidation hook を提供する場合の `InvalidateToken` 活性化 (`internal/tools/server.go` line 176)
 
 オプションA (GitHub API 呼び出しをリクエストスコープのみに制限) はウォッチ機能の根幹を壊すため非推奨です。

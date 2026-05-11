@@ -76,10 +76,10 @@
 
 ### 結論: goroutine の復元は一切行われない
 
-`store/db.go` の `Open()` 関数で、DB 開放と同時に次が実行される:
+`internal/store/db.go` の `Open()` 関数で、DB 開放と同時に次が実行される:
 
 ```go
-// store/db.go:124
+// internal/store/db.go:124
 d := &DB{db: db}
 if _, err := d.MarkActiveReviewWatchesStale(staleOnOpenMessage); err != nil {
     db.Close()
