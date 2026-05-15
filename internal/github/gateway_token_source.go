@@ -59,6 +59,16 @@ var ErrGatewayNonLoopback = errors.New("gateway: endpoint URL must be loopback (
 // confusing 404. This error makes that misconfiguration fail at startup.
 var ErrGatewayInvalidPath = errors.New(`gateway: endpoint URL must end with "/whoami" (e.g. http://127.0.0.1:8081/internal/v1/whoami)`)
 
+// ErrGatewayInvalidExpiry is returned when the gateway whoami response is
+// missing expires_at or contains a value that cannot be parsed as RFC3339.
+//
+// Without an Expiry, oauth2.ReuseTokenSource treats the token as never
+// expiring and caches it indefinitely, so the watch would never re-fetch
+// from the gateway even after the real underlying token expires. We fail
+// closed instead, forcing the caller to either fix the gateway response
+// or recover with a fresh whoami call on the next attempt.
+var ErrGatewayInvalidExpiry = errors.New(`gateway: whoami response missing or invalid expires_at`)
+
 // DefaultGatewayTimeout bounds a single whoami round-trip. The same value is
 // used for both the default http.Client.Timeout (when caller does not supply
 // one) and the per-call context deadline derived from Context, so request-
@@ -296,14 +306,17 @@ func (g *gatewayTokenSource) Token() (*oauth2.Token, error) {
 		AccessToken: r.AccessToken,
 		TokenType:   r.TokenType,
 	}
-	if r.ExpiresAt != "" {
-		// Parse RFC3339; on parse failure leave Expiry zero (treated as
-		// "no expiry known"), which causes ReuseTokenSource to call Token
-		// only on first use and on explicit invalidation. Logging is left
-		// to the caller because this package must remain log-agnostic.
-		if t, perr := time.Parse(time.RFC3339, r.ExpiresAt); perr == nil {
-			tok.Expiry = t
-		}
+	// expires_at is required. A zero Expiry combined with
+	// oauth2.ReuseTokenSource means the token is treated as never
+	// expiring, which would silently disable refresh after the real
+	// gateway-side token expires. Fail closed.
+	if r.ExpiresAt == "" {
+		return nil, ErrGatewayInvalidExpiry
 	}
+	t, perr := time.Parse(time.RFC3339, r.ExpiresAt)
+	if perr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrGatewayInvalidExpiry, perr)
+	}
+	tok.Expiry = t
 	return tok, nil
 }

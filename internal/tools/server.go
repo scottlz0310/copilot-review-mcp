@@ -129,7 +129,7 @@ func (h *StreamableHandler) Close() {
 }
 
 // BuilderOptions configures optional behaviors for BuildStreamableHandlerWithOptions.
-// Unset fields fall back to defaults that preserve v3.0.x behavior.
+// Unset fields fall back to defaults that preserve current behavior.
 type BuilderOptions struct {
 	// GatewayClientFactory, if non-nil, overrides the default static-token
 	// watch ClientFactory. It is invoked per watch with the authenticated

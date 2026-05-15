@@ -264,8 +264,11 @@ func TestGatewayTokenSource_MissingAccessToken(t *testing.T) {
 	}
 }
 
-func TestGatewayTokenSource_NoExpiry(t *testing.T) {
+func TestGatewayTokenSource_MissingExpiry_Errors(t *testing.T) {
 	t.Parallel()
+	// Gateway response with no expires_at must fail closed: returning a
+	// zero Expiry would let oauth2.ReuseTokenSource cache the token
+	// forever and silently disable refresh after the real token expires.
 	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
 		AccessToken: "gho_x",
 		TokenType:   "bearer",
@@ -280,12 +283,30 @@ func TestGatewayTokenSource_NoExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGatewayTokenSource: %v", err)
 	}
-	tok, err := ts.Token()
-	if err != nil {
-		t.Fatalf("Token: %v", err)
+	if _, err := ts.Token(); !errors.Is(err, ErrGatewayInvalidExpiry) {
+		t.Fatalf("expected ErrGatewayInvalidExpiry, got %v", err)
 	}
-	if !tok.Expiry.IsZero() {
-		t.Errorf("Expiry=%v, want zero", tok.Expiry)
+}
+
+func TestGatewayTokenSource_InvalidExpiry_Errors(t *testing.T) {
+	t.Parallel()
+	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
+		AccessToken: "gho_x",
+		TokenType:   "bearer",
+		ExpiresAt:   "not-a-timestamp",
+	})
+	t.Cleanup(srv.Close)
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
+		EndpointURL: srv.URL + "/internal/v1/whoami",
+		Secret:      "s",
+		Subject:     "alice",
+		HTTPClient:  srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
+	if _, err := ts.Token(); !errors.Is(err, ErrGatewayInvalidExpiry) {
+		t.Fatalf("expected ErrGatewayInvalidExpiry, got %v", err)
 	}
 }
 
@@ -389,6 +410,7 @@ func TestGatewayTokenSource_NoParentContext_StillWorks(t *testing.T) {
 	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
 		AccessToken: "gho_x",
 		TokenType:   "bearer",
+		ExpiresAt:   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 	})
 	t.Cleanup(srv.Close)
 	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
