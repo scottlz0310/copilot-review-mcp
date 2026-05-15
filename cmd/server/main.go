@@ -109,10 +109,15 @@ func loadConfig() config {
 	// Fail-closed: both env vars must be set together. Configuring only one is
 	// almost always a deployment mistake (e.g., secret leaked but URL forgotten),
 	// so refuse to start rather than silently falling back to static tokens.
+	//
+	// Note: this runs before slog.SetDefault is configured in main(), so we
+	// write directly to stderr instead of via slog. Otherwise startup-time
+	// config failures would be logged with the default slog handler/format
+	// rather than the intended JSON handler + LOG_LEVEL.
 	if (gatewayURL == "") != (gatewaySecret == "") {
-		slog.Error("phase B gateway config is incomplete: set both COPILOT_REVIEW_GATEWAY_INTERNAL_URL and COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET, or neither",
-			"url_set", gatewayURL != "",
-			"secret_set", gatewaySecret != "")
+		fmt.Fprintf(os.Stderr,
+			"copilot-review-mcp: phase B gateway config is incomplete: set both COPILOT_REVIEW_GATEWAY_INTERNAL_URL and COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET, or neither (url_set=%t secret_set=%t)\n",
+			gatewayURL != "", gatewaySecret != "")
 		os.Exit(1)
 	}
 	// When both are set, validate URL/secret at startup so misconfiguration
@@ -120,7 +125,7 @@ func loadConfig() config {
 	// every watch to static tokens at runtime.
 	if gatewayURL != "" {
 		if err := ghclient.ValidateGatewayEndpoint(gatewayURL, gatewaySecret); err != nil {
-			slog.Error("phase B gateway config rejected at startup", "err", err)
+			fmt.Fprintf(os.Stderr, "copilot-review-mcp: phase B gateway config rejected at startup: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -153,7 +158,7 @@ func loadConfig() config {
 // can still make progress; this preserves availability but is loud enough
 // for ops to detect that Phase B is not actually engaged.
 func buildGatewayClientFactory(endpointURL, secret string, threshold time.Duration) func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
-	sharedHTTP := &http.Client{Timeout: 10 * time.Second}
+	sharedHTTP := &http.Client{Timeout: ghclient.DefaultGatewayTimeout}
 	return func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
 		ts, err := ghclient.NewGatewayTokenSource(ghclient.GatewayTokenSourceConfig{
 			EndpointURL: endpointURL,

@@ -52,11 +52,27 @@ var (
 // "Future work").
 var ErrGatewayNonLoopback = errors.New("gateway: endpoint URL must be loopback (127.0.0.1 / ::1 / localhost)")
 
-// defaultGatewayTimeout bounds a single whoami round-trip. The same value is
+// ErrGatewayInvalidPath is returned when the gateway endpoint URL is missing
+// the expected whoami path. The README/changelog document EndpointURL as the
+// full whoami endpoint (e.g. http://127.0.0.1:8081/internal/v1/whoami), so a
+// URL that only carries the host:port would silently fail at runtime with a
+// confusing 404. This error makes that misconfiguration fail at startup.
+var ErrGatewayInvalidPath = errors.New(`gateway: endpoint URL must end with "/whoami" (e.g. http://127.0.0.1:8081/internal/v1/whoami)`)
+
+// DefaultGatewayTimeout bounds a single whoami round-trip. The same value is
 // used for both the default http.Client.Timeout (when caller does not supply
 // one) and the per-call context deadline derived from Context, so request-
 // level cancellation and transport-level timeout agree.
-const defaultGatewayTimeout = 10 * time.Second
+//
+// Exported so callers that construct their own *http.Client (e.g.
+// cmd/server/main.go's buildGatewayClientFactory) can share this single
+// source of truth and avoid the context-deadline vs transport-timeout drift
+// previously fixed in this package.
+const DefaultGatewayTimeout = 10 * time.Second
+
+// defaultGatewayTimeout is kept as an internal alias so the existing call
+// sites in this file continue to compile unchanged.
+const defaultGatewayTimeout = DefaultGatewayTimeout
 
 // GatewayTokenSourceConfig configures a gatewayTokenSource.
 type GatewayTokenSourceConfig struct {
@@ -144,6 +160,9 @@ func ValidateGatewayEndpoint(endpointURL, secret string) error {
 	if !isLoopbackHost(u.Hostname()) {
 		return fmt.Errorf("%w: got host %q", ErrGatewayNonLoopback, u.Hostname())
 	}
+	if !strings.HasSuffix(u.Path, "/whoami") {
+		return fmt.Errorf("%w: got path %q", ErrGatewayInvalidPath, u.Path)
+	}
 	return nil
 }
 
@@ -170,6 +189,9 @@ func NewGatewayTokenSource(cfg GatewayTokenSourceConfig) (oauth2.TokenSource, er
 	host := u.Hostname()
 	if !isLoopbackHost(host) {
 		return nil, fmt.Errorf("%w: got host %q", ErrGatewayNonLoopback, host)
+	}
+	if !strings.HasSuffix(u.Path, "/whoami") {
+		return nil, fmt.Errorf("%w: got path %q", ErrGatewayInvalidPath, u.Path)
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {

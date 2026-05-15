@@ -50,6 +50,81 @@ func TestNewGatewayTokenSource_NonLoopbackError(t *testing.T) {
 	}
 }
 
+// TestNewGatewayTokenSource_InvalidPathError verifies that a loopback URL
+// missing the /whoami suffix is rejected at construction so the misconfiguration
+// surfaces at startup rather than at the first watch's first whoami round-trip
+// (where it would manifest as a confusing 404 / ErrGatewaySubjectGone).
+func TestNewGatewayTokenSource_InvalidPathError(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"http://127.0.0.1:8081",
+		"http://127.0.0.1:8081/",
+		"http://127.0.0.1:8081/internal/v1",
+		"http://127.0.0.1:8081/health",
+	}
+	for _, u := range cases {
+		u := u
+		t.Run(u, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
+				EndpointURL: u,
+				Secret:      "s",
+				Subject:     "alice",
+			})
+			if !errors.Is(err, ErrGatewayInvalidPath) {
+				t.Fatalf("expected ErrGatewayInvalidPath, got %v", err)
+			}
+		})
+	}
+}
+
+// TestValidateGatewayEndpoint covers the subject-independent startup-time
+// validation used by cmd/server/main.go before any watch exists.
+func TestValidateGatewayEndpoint(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		url     string
+		secret  string
+		wantErr error
+	}{
+		{name: "ok", url: "http://127.0.0.1:8081/internal/v1/whoami", secret: "s", wantErr: nil},
+		{name: "ok localhost", url: "http://localhost:8081/internal/v1/whoami", secret: "s", wantErr: nil},
+		{name: "missing url", url: "", secret: "s", wantErr: errors.New("required")},
+		{name: "missing secret", url: "http://127.0.0.1:8081/internal/v1/whoami", secret: "", wantErr: errors.New("required")},
+		{name: "bad scheme", url: "ftp://127.0.0.1/internal/v1/whoami", secret: "s", wantErr: errors.New("scheme")},
+		{name: "non-loopback", url: "http://example.com/internal/v1/whoami", secret: "s", wantErr: ErrGatewayNonLoopback},
+		{name: "no path", url: "http://127.0.0.1:8081", secret: "s", wantErr: ErrGatewayInvalidPath},
+		{name: "wrong path", url: "http://127.0.0.1:8081/health", secret: "s", wantErr: ErrGatewayInvalidPath},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateGatewayEndpoint(tc.url, tc.secret)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			// Sentinel errors use errors.Is; ad-hoc errors are matched on substring.
+			if errors.Is(tc.wantErr, ErrGatewayNonLoopback) || errors.Is(tc.wantErr, ErrGatewayInvalidPath) {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("expected sentinel %v, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if !strings.Contains(err.Error(), tc.wantErr.Error()) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantErr.Error(), err)
+			}
+		})
+	}
+}
+
 func TestNewGatewayTokenSource_AcceptsLoopbackVariants(t *testing.T) {
 	t.Parallel()
 	for _, host := range []string{"127.0.0.1", "[::1]", "localhost"} {
@@ -175,12 +250,15 @@ func TestGatewayTokenSource_MissingAccessToken(t *testing.T) {
 	t.Parallel()
 	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{TokenType: "bearer"})
 	t.Cleanup(srv.Close)
-	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 		EndpointURL: srv.URL + "/internal/v1/whoami",
 		Secret:      "s",
 		Subject:     "alice",
 		HTTPClient:  srv.Client(),
 	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
 	if _, err := ts.Token(); err == nil || !strings.Contains(err.Error(), "access_token") {
 		t.Fatalf("expected access_token error, got %v", err)
 	}
@@ -193,12 +271,15 @@ func TestGatewayTokenSource_NoExpiry(t *testing.T) {
 		TokenType:   "bearer",
 	})
 	t.Cleanup(srv.Close)
-	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 		EndpointURL: srv.URL + "/internal/v1/whoami",
 		Secret:      "s",
 		Subject:     "alice",
 		HTTPClient:  srv.Client(),
 	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
 	tok, err := ts.Token()
 	if err != nil {
 		t.Fatalf("Token: %v", err)
@@ -257,12 +338,15 @@ func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
 	srv := httptest.NewServer(slowResponder{delay: 200 * time.Millisecond})
 	t.Cleanup(srv.Close)
 	hc := &http.Client{Timeout: 20 * time.Millisecond}
-	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 		EndpointURL: srv.URL + "/internal/v1/whoami",
 		Secret:      "s",
 		Subject:     "alice",
 		HTTPClient:  hc,
 	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
 	if _, err := ts.Token(); err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -281,13 +365,16 @@ func TestGatewayTokenSource_ParentContextCancelPropagates(t *testing.T) {
 	})
 	t.Cleanup(srv.Close)
 	parent, cancel := context.WithCancel(context.Background())
-	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 		EndpointURL: srv.URL + "/internal/v1/whoami",
 		Secret:      "s",
 		Subject:     "alice",
 		HTTPClient:  srv.Client(),
 		Context:     parent,
 	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
 	cancel()
 	if _, err := ts.Token(); err == nil {
 		t.Fatal("expected Token() to fail when parent context is cancelled, got nil")
@@ -304,12 +391,15 @@ func TestGatewayTokenSource_NoParentContext_StillWorks(t *testing.T) {
 		TokenType:   "bearer",
 	})
 	t.Cleanup(srv.Close)
-	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+	ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 		EndpointURL: srv.URL + "/internal/v1/whoami",
 		Secret:      "s",
 		Subject:     "alice",
 		HTTPClient:  srv.Client(),
 	})
+	if err != nil {
+		t.Fatalf("NewGatewayTokenSource: %v", err)
+	}
 	if _, err := ts.Token(); err != nil {
 		t.Fatalf("Token: %v", err)
 	}
