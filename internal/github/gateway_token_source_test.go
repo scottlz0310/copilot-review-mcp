@@ -268,9 +268,36 @@ func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
 	}
 }
 
-// Sanity: ensure context derivation does not leak — Token uses its own
-// internal timeout context.
-func TestGatewayTokenSource_NoContextLeak(t *testing.T) {
+// Verify that watch cancellation propagates: when the parent context passed
+// via GatewayTokenSourceConfig.Context is cancelled, Token() must fail rather
+// than complete the whoami round-trip. Aligns Token's semantics with the
+// Phase B PR-A goal of letting watch/server shutdown stop in-flight token
+// refresh.
+func TestGatewayTokenSource_ParentContextCancelPropagates(t *testing.T) {
+	t.Parallel()
+	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
+		AccessToken: "gho_x",
+		TokenType:   "bearer",
+	})
+	t.Cleanup(srv.Close)
+	parent, cancel := context.WithCancel(context.Background())
+	ts, _ := NewGatewayTokenSource(GatewayTokenSourceConfig{
+		EndpointURL: srv.URL + "/internal/v1/whoami",
+		Secret:      "s",
+		Subject:     "alice",
+		HTTPClient:  srv.Client(),
+		Context:     parent,
+	})
+	cancel()
+	if _, err := ts.Token(); err == nil {
+		t.Fatal("expected Token() to fail when parent context is cancelled, got nil")
+	}
+}
+
+// When no parent context is configured (nil Context), Token() must still
+// succeed using context.Background(): existing callers that pre-date the
+// Context field continue to work.
+func TestGatewayTokenSource_NoParentContext_StillWorks(t *testing.T) {
 	t.Parallel()
 	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
 		AccessToken: "gho_x",
@@ -283,11 +310,6 @@ func TestGatewayTokenSource_NoContextLeak(t *testing.T) {
 		Subject:     "alice",
 		HTTPClient:  srv.Client(),
 	})
-	// Even with a cancelled parent context elsewhere, Token() must succeed
-	// because it builds its own context.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_ = ctx
 	if _, err := ts.Token(); err != nil {
 		t.Fatalf("Token: %v", err)
 	}

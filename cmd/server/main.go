@@ -115,6 +115,15 @@ func loadConfig() config {
 			"secret_set", gatewaySecret != "")
 		os.Exit(1)
 	}
+	// When both are set, validate URL/secret at startup so misconfiguration
+	// (bad scheme, non-loopback host) fails fast instead of silently degrading
+	// every watch to static tokens at runtime.
+	if gatewayURL != "" {
+		if err := ghclient.ValidateGatewayEndpoint(gatewayURL, gatewaySecret); err != nil {
+			slog.Error("phase B gateway config rejected at startup", "err", err)
+			os.Exit(1)
+		}
+	}
 	return config{
 		port:                   getEnv("MCP_PORT", "8083"),
 		bindAddr:               getEnv("BIND_ADDR", "127.0.0.1"),
@@ -130,19 +139,31 @@ func loadConfig() config {
 // access token for the authenticated GitHub login from the gateway's
 // /internal/v1/whoami endpoint. The returned source is wrapped in
 // oauth2.ReuseTokenSource per watch so whoami is only hit when the cached
-// token is near expiry. If gateway token-source construction fails (e.g.,
-// empty login), the factory falls back to a static-token client so the watch
-// can still make progress; PR-B will replace this with structured error
-// mapping (#29).
+// token is near expiry.
+//
+// A single *http.Client is constructed once and shared across every watch's
+// token source. The underlying http.Transport is safe for concurrent reuse
+// and sharing it avoids allocating a fresh transport (and its idle-connection
+// pool) per watch.
+//
+// Endpoint URL and shared secret are validated at startup in loadConfig, so
+// the only failure remaining at watch creation is an empty GitHub login
+// (which would indicate a session-binding bug, not a config error). In that
+// case we log at Error level and fall back to the static token so the watch
+// can still make progress; this preserves availability but is loud enough
+// for ops to detect that Phase B is not actually engaged.
 func buildGatewayClientFactory(endpointURL, secret string, threshold time.Duration) func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
+	sharedHTTP := &http.Client{Timeout: 10 * time.Second}
 	return func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
 		ts, err := ghclient.NewGatewayTokenSource(ghclient.GatewayTokenSourceConfig{
 			EndpointURL: endpointURL,
 			Secret:      secret,
 			Subject:     login,
+			HTTPClient:  sharedHTTP,
+			Context:     ctx,
 		})
 		if err != nil {
-			slog.Warn("gateway token source unavailable; using static token for this watch",
+			slog.Error("gateway token source unavailable; phase B disabled for this watch, falling back to static token",
 				"login", login, "err", err)
 			return ghclient.NewClient(ctx, token, threshold, nil)
 		}

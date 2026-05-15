@@ -52,6 +52,12 @@ var (
 // "Future work").
 var ErrGatewayNonLoopback = errors.New("gateway: endpoint URL must be loopback (127.0.0.1 / ::1 / localhost)")
 
+// defaultGatewayTimeout bounds a single whoami round-trip. The same value is
+// used for both the default http.Client.Timeout (when caller does not supply
+// one) and the per-call context deadline derived from Context, so request-
+// level cancellation and transport-level timeout agree.
+const defaultGatewayTimeout = 10 * time.Second
+
 // GatewayTokenSourceConfig configures a gatewayTokenSource.
 type GatewayTokenSourceConfig struct {
 	// EndpointURL is the full URL of the gateway's whoami endpoint,
@@ -68,9 +74,20 @@ type GatewayTokenSourceConfig struct {
 	Subject string
 
 	// HTTPClient is the underlying transport. Optional; if nil a fresh
-	// client with a 5s timeout is used. Callers should not enable
-	// connection re-use across goroutines for different subjects.
+	// client with defaultGatewayTimeout is used. The token source itself
+	// must be constructed per-subject (each watch has its own subject),
+	// but the underlying *http.Client / http.Transport are designed for
+	// concurrent reuse and SHOULD be shared across token sources to
+	// avoid leaking idle connections.
 	HTTPClient *http.Client
+
+	// Context is the long-lived parent context (e.g., the watch
+	// goroutine's context). Token() derives a per-request context with
+	// defaultGatewayTimeout from this parent, so cancelling the parent
+	// (watch stop / server shutdown) also cancels any in-flight whoami
+	// call. Optional; defaults to context.Background() which yields the
+	// previous "timeout-only" behavior.
+	Context context.Context
 }
 
 type whoamiResponse struct {
@@ -99,6 +116,35 @@ type gatewayTokenSource struct {
 	secret   string
 	subject  string
 	httpc    *http.Client
+	parent   context.Context
+}
+
+// ValidateGatewayEndpoint performs subject-independent validation of the
+// gateway endpoint URL and shared secret. It is intended for startup-time
+// fail-fast checks (e.g., in cmd/server/main.go) where the GitHub login
+// (Subject) is not yet known but the deployment-level configuration must be
+// rejected if it is malformed.
+//
+// Returns the same error sentinels as NewGatewayTokenSource for URL/scheme/
+// loopback violations (ErrGatewayNonLoopback for non-loopback hosts).
+func ValidateGatewayEndpoint(endpointURL, secret string) error {
+	if strings.TrimSpace(endpointURL) == "" {
+		return errors.New("gateway: endpoint URL is required")
+	}
+	if strings.TrimSpace(secret) == "" {
+		return errors.New("gateway: shared secret is required")
+	}
+	u, err := url.Parse(endpointURL)
+	if err != nil {
+		return fmt.Errorf("gateway: invalid endpoint URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("gateway: endpoint URL scheme must be http or https, got %q", u.Scheme)
+	}
+	if !isLoopbackHost(u.Hostname()) {
+		return fmt.Errorf("%w: got host %q", ErrGatewayNonLoopback, u.Hostname())
+	}
+	return nil
 }
 
 // NewGatewayTokenSource constructs a gatewayTokenSource after validating the
@@ -127,13 +173,18 @@ func NewGatewayTokenSource(cfg GatewayTokenSourceConfig) (oauth2.TokenSource, er
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Second}
+		hc = &http.Client{Timeout: defaultGatewayTimeout}
+	}
+	parent := cfg.Context
+	if parent == nil {
+		parent = context.Background()
 	}
 	return &gatewayTokenSource{
 		endpoint: cfg.EndpointURL,
 		secret:   cfg.Secret,
 		subject:  cfg.Subject,
 		httpc:    hc,
+		parent:   parent,
 	}, nil
 }
 
@@ -156,12 +207,16 @@ func isLoopbackHost(host string) bool {
 
 // Token fetches the current access token from the gateway whoami endpoint.
 // Implements oauth2.TokenSource.
+//
+// The request context is derived from the configured parent context with
+// defaultGatewayTimeout, so cancellation of the watch (or server shutdown)
+// propagates into the in-flight whoami call.
 func (g *gatewayTokenSource) Token() (*oauth2.Token, error) {
 	body, err := json.Marshal(map[string]string{"subject": g.subject})
 	if err != nil {
 		return nil, fmt.Errorf("gateway: marshal whoami body: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(g.parent, defaultGatewayTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -176,6 +231,14 @@ func (g *gatewayTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("gateway: whoami request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		// Drain a bounded portion of the body so net/http can reuse the
+		// underlying connection on keep-alive. Errors here are ignored;
+		// connection reuse is best-effort, and we still want to surface
+		// the original status-derived error to the caller below.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:

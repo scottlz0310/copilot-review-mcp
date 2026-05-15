@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `watch.Options.ClientFactory` signature extended from `func(ctx, token string) ReviewDataFetcher` to `func(ctx, token, login string) ReviewDataFetcher`. Internal-only callers updated.
+- **Phase B PR-A review feedback (PR #30 Copilot review)**:
+  - `gatewayTokenSource.Token()` now derives its request context from a configurable parent (`GatewayTokenSourceConfig.Context`) and a single `defaultGatewayTimeout` constant (10s). Cancelling the watch / shutting down the server now propagates into in-flight whoami calls.
+  - Non-200 responses now drain a bounded portion of the body before returning the mapped sentinel error, letting `net/http` reuse the underlying keep-alive connection.
+  - New `ghclient.ValidateGatewayEndpoint(url, secret)` and `loadConfig` startup check: malformed URL, non-http(s) scheme, non-loopback host, or empty secret now fail-fast at startup instead of silently degrading every watch to static tokens.
+  - `buildGatewayClientFactory` now constructs a single shared `*http.Client` once and passes it via `GatewayTokenSourceConfig.HTTPClient` to every per-watch token source (transport / idle-connection pool reuse). Runtime fallback to static tokens (only reachable on empty GitHub login) is now logged at `slog.Error`.
+  - `GatewayTokenSourceConfig.HTTPClient` documentation clarified: the token source itself must be per-subject, but the underlying `*http.Client` / `http.Transport` is designed for concurrent reuse and should be shared across watches.
 
 ## [3.1.0] - 2026-05-09
 

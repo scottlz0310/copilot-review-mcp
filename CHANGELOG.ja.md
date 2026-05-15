@@ -23,6 +23,12 @@
 ### 変更
 
 - `watch.Options.ClientFactory` のシグネチャを `func(ctx, token string) ReviewDataFetcher` から `func(ctx, token, login string) ReviewDataFetcher` に拡張。内部呼び出し側のみの修正。
+- **Phase B PR-A レビュー反映 (PR #30 Copilot レビュー)**:
+  - `gatewayTokenSource.Token()` のリクエストコンテキストを設定可能な親 (`GatewayTokenSourceConfig.Context`) と単一の `defaultGatewayTimeout` 定数 (10秒) から派生するよう変更。watch のキャンセル/サーバーシャットダウンが in-flight な whoami 呼び出しに伝播するようになった。
+  - 非 200 応答時にレスポンスボディの一部を破棄してから sentinel エラーを返すことで、`net/http` の keep-alive 接続再利用を可能化。
+  - `ghclient.ValidateGatewayEndpoint(url, secret)` を新設し、`loadConfig` の起動時チェックに組み込み。不正な URL・非 http(s) スキーム・非ループバックホスト・空シークレットは起動時に fail-fast。watch 毎に static トークンへサイレント降格していた挙動を排除。
+  - `buildGatewayClientFactory` で `*http.Client` を 1 度だけ生成し、`GatewayTokenSourceConfig.HTTPClient` 経由で全 watch のトークンソースに共有 (transport / idle 接続プール再利用)。空 login 時のみ到達する static トークンへの runtime フォールバックは `slog.Error` でログ。
+  - `GatewayTokenSourceConfig.HTTPClient` の docstring を修正: トークンソースは subject 毎だが、内部の `*http.Client` / `http.Transport` は並行再利用可能で watch 間で共有すべき。
 
 ## [3.1.0] - 2026-05-09
 
