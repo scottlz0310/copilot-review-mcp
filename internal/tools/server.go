@@ -128,11 +128,28 @@ func (h *StreamableHandler) Close() {
 	})
 }
 
+// BuilderOptions configures optional behaviors for BuildStreamableHandlerWithOptions.
+// Unset fields fall back to defaults that preserve current behavior.
+type BuilderOptions struct {
+	// GatewayClientFactory, if non-nil, overrides the default static-token
+	// watch ClientFactory. It is invoked per watch with the authenticated
+	// GitHub session token and login. Used by Phase B delegated background
+	// access (see scottlz0310/copilot-review-mcp#29).
+	GatewayClientFactory func(ctx context.Context, token, login string) watch.ReviewDataFetcher
+}
+
 // BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP.
 // getServer is called for new stateful MCP sessions and returns the shared
 // long-lived *mcp.Server. GitHub clients are created per tool call from the
 // authenticated request headers.
 func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHandler {
+	return BuildStreamableHandlerWithOptions(db, threshold, BuilderOptions{})
+}
+
+// BuildStreamableHandlerWithOptions is the option-accepting variant of
+// BuildStreamableHandler. Callers that need Phase B gateway delegated
+// background access should use this entry point.
+func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, opts BuilderOptions) *StreamableHandler {
 	clientProvider := newGitHubClientProvider(threshold, nil)
 	// watchManager is declared before srv so the SubscribeHandler closure can reference it
 	// for authorization. At the time any subscribe request arrives the server is already
@@ -174,6 +191,7 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHa
 	watchManager = watch.NewManager(db, watch.Options{
 		Threshold:       threshold,
 		InvalidateToken: nil,
+		ClientFactory:   opts.GatewayClientFactory,
 		NotifyResourceUpdated: func(uri string) {
 			if err := srv.ResourceUpdated(context.Background(), &mcp.ResourceUpdatedNotificationParams{URI: uri}); err != nil {
 				slog.Warn("resource updated notification failed", "uri", uri, "err", err)

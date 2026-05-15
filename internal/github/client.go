@@ -132,6 +132,23 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 	}
 }
 
+// NewClientWithTokenSource creates a Client backed by an arbitrary
+// oauth2.TokenSource. Use this with a gatewayTokenSource (wrapped in
+// oauth2.ReuseTokenSource) so long-lived watch goroutines pick up tokens
+// rotated by the gateway transparently.
+//
+// invalidatingTransport is not attached here because the "current" token is
+// dynamic — invalidation on 401 is deferred to PR-B per
+// scottlz0310/copilot-review-mcp#29.
+func NewClientWithTokenSource(ctx context.Context, ts oauth2.TokenSource, threshold time.Duration) *Client {
+	httpClient := oauth2.NewClient(ctx, ts)
+	return &Client{
+		gh:        github.NewClient(httpClient),
+		v4:        githubv4.NewClient(httpClient),
+		threshold: threshold,
+	}
+}
+
 // NewWithClients creates a Client from pre-built REST and GraphQL API clients.
 // Intended for tests that need to inject mock HTTP servers in place of api.github.com.
 func NewWithClients(gh *github.Client, v4 *githubv4.Client, threshold time.Duration) *Client {

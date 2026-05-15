@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase B delegated background access — client core (PR-A)** for [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
+  - `internal/github/gateway_token_source.go` — `gatewayTokenSource` implements `oauth2.TokenSource` against the gateway's `POST /internal/v1/whoami` endpoint. Validates loopback host (`127.0.0.1` / `::1` / `localhost`) at construction; parses `expires_at` into `oauth2.Token.Expiry` so `oauth2.ReuseTokenSource` only re-resolves near expiry.
+  - Sentinel errors `ErrGatewaySubjectGone` (404), `ErrGatewayUnauthorized` (401), `ErrGatewayLoopbackRequired` (403), `ErrGatewayUpstreamFailure` (502), `ErrGatewayBadRequest` (other 4xx), `ErrGatewayNonLoopback`. Mapping to `FailureReasonAuthExpired` / recovery hints is deferred to PR-B.
+  - `internal/github/client.go` — new `NewClientWithTokenSource(ctx, ts, threshold)` for dynamic-token clients (no `invalidatingTransport`; activation deferred to PR-B).
+  - `internal/tools/server.go` — new `BuilderOptions{GatewayClientFactory}` and `BuildStreamableHandlerWithOptions`. Existing `BuildStreamableHandler(db, threshold)` is unchanged.
+  - `cmd/server/main.go` — opt-in via `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` and `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET`. When unset, watch goroutines keep using `oauth2.StaticTokenSource` (no behavior change). Fail-closed: setting only one of the two env vars exits at startup.
+  - **Subject** sent to the gateway is the authenticated GitHub login (per gateway docs).
+  - **Limitation**: PoC requires client and gateway on the same host (loopback). Cross-container Docker Compose deployments are not supported in PR-A.
+
+### Changed
+
+- `watch.Options.ClientFactory` signature extended from `func(ctx, token string) ReviewDataFetcher` to `func(ctx, token, login string) ReviewDataFetcher`. Internal-only callers updated.
+- **Phase B PR-A review feedback (PR #30 Copilot review)**:
+  - `gatewayTokenSource.Token()` now derives its request context from a configurable parent (`GatewayTokenSourceConfig.Context`) and a single `defaultGatewayTimeout` constant (10s). Cancelling the watch / shutting down the server now propagates into in-flight whoami calls.
+  - Non-200 responses now drain a bounded portion of the body before returning the mapped sentinel error, letting `net/http` reuse the underlying keep-alive connection.
+  - New `ghclient.ValidateGatewayEndpoint(url, secret)` and `loadConfig` startup check: malformed URL, non-http(s) scheme, non-loopback host, or empty secret now fail-fast at startup instead of silently degrading every watch to static tokens.
+  - `buildGatewayClientFactory` now constructs a single shared `*http.Client` once and passes it via `GatewayTokenSourceConfig.HTTPClient` to every per-watch token source (transport / idle-connection pool reuse). Runtime fallback to static tokens (only reachable on empty GitHub login) is now logged at `slog.Error`.
+  - `GatewayTokenSourceConfig.HTTPClient` documentation clarified: the token source itself must be per-subject, but the underlying `*http.Client` / `http.Transport` is designed for concurrent reuse and should be shared across watches.
+
 ## [3.1.0] - 2026-05-09
 
 ### Added

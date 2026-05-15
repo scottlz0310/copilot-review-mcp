@@ -24,7 +24,7 @@ func TestGetWatchStatusHandlerScopesWatchIDByLogin(t *testing.T) {
 	manager := watch.NewManager(db, watch.Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
@@ -59,7 +59,7 @@ func TestGetWatchStatusHandlerReturnsLLMHints(t *testing.T) {
 	manager := watch.NewManager(db, watch.Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
@@ -112,7 +112,7 @@ func TestListWatchesHandlerReturnsSortedViews(t *testing.T) {
 		Now: func() time.Time {
 			return base
 		},
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
@@ -175,7 +175,7 @@ func TestCancelWatchHandlerCancelsByPRKey(t *testing.T) {
 	manager := watch.NewManager(db, watch.Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
@@ -321,7 +321,7 @@ func TestWatchResourceHandlerScopesWatchIDByLogin(t *testing.T) {
 	manager := watch.NewManager(db, watch.Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
@@ -384,7 +384,7 @@ func TestWatchResourceHandlerReturnsJSON(t *testing.T) {
 	manager := watch.NewManager(db, watch.Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) watch.ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) watch.ReviewDataFetcher {
 			return testStaticFetcher{}
 		},
 	})
