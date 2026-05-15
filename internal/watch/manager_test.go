@@ -22,7 +22,7 @@ func TestManagerStartReusesActiveWatch(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -69,7 +69,7 @@ func TestManagerStartPersistsActiveWatch(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -128,7 +128,7 @@ func TestManagerReuseWithTriggerLinkUpdatesTimestamp(t *testing.T) {
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
 		Now:          nowFn,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -198,7 +198,7 @@ func TestManagerMarksCompletedAndClearsActiveKey(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{
@@ -266,7 +266,7 @@ func TestManagerAuthExpiredFailsWatch(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{err: &github.ErrorResponse{Response: &http.Response{StatusCode: http.StatusUnauthorized}}},
@@ -303,7 +303,7 @@ func TestManagerCloseMarksActiveWatchStale(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 50 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -361,7 +361,7 @@ func TestManagerPersistFailureDuringPollingFailsWatch(t *testing.T) {
 	}, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -406,7 +406,7 @@ func TestManagerPersistFailureDuringTerminalTransitionFailsWatch(t *testing.T) {
 	}, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{
@@ -458,7 +458,7 @@ func TestManagerCloseKeepsStaleStatusWhenPersistenceFails(t *testing.T) {
 	}, Options{
 		PollInterval: 50 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -499,7 +499,7 @@ func TestManagerGetLatestFallsBackToPersistedWatch(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{
@@ -553,7 +553,7 @@ func TestManagerListReturnsActiveFirstAndIncludesPersistedWatch(t *testing.T) {
 		Now: func() time.Time {
 			return base
 		},
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -612,7 +612,7 @@ func TestManagerCancelLatestMarksWatchCancelled(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -677,7 +677,7 @@ func TestManagerPollTimeoutFailsWatch(t *testing.T) {
 		PollInterval: 5 * time.Millisecond,
 		PollTimeout:  10 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return blockingFetcher{}
 		},
 	})
@@ -738,7 +738,7 @@ func TestManagerMaxWatchDurationTransitionsToTimeout(t *testing.T) {
 		MaxWatchDuration: 1 * time.Millisecond,
 		Threshold:        30 * time.Second,
 		Now:              nowFn,
-		ClientFactory:    func(_ context.Context, _ string) ReviewDataFetcher { return fetcher },
+		ClientFactory:    func(_ context.Context, _, _ string) ReviewDataFetcher { return fetcher },
 	})
 	t.Cleanup(manager.Close)
 
@@ -776,7 +776,7 @@ func TestManagerLowRateLimitIncludesRetryDetail(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{
@@ -949,7 +949,7 @@ func TestManagerNotifyResourceUpdatedCalledOnTerminal(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{
@@ -1016,7 +1016,7 @@ func TestManagerNotifyResourceUpdatedCalledOnReviewStatusChange(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: 5 * time.Millisecond,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					// First poll: PENDING (no review yet)
@@ -1182,7 +1182,7 @@ func TestManagerCancelLatestClearsTriggerLogPending(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
@@ -1242,7 +1242,7 @@ func TestManagerCancelByIDClearsTriggerLogPending(t *testing.T) {
 	manager := NewManager(db, Options{
 		PollInterval: time.Hour,
 		Threshold:    30 * time.Second,
-		ClientFactory: func(_ context.Context, _ string) ReviewDataFetcher {
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},

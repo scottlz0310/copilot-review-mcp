@@ -9,6 +9,21 @@
 
 ## [Unreleased]
 
+### 追加
+
+- **Phase B 委譲バックグラウンドアクセス — クライアントコア (PR-A)** — [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
+  - `internal/github/gateway_token_source.go` — gateway の `POST /internal/v1/whoami` を叩く `oauth2.TokenSource` 実装 `gatewayTokenSource`。コンストラクタで loopback ホスト (`127.0.0.1` / `::1` / `localhost`) を検証。`expires_at` を `oauth2.Token.Expiry` に反映するため `oauth2.ReuseTokenSource` で whoami 呼び出しを抑制可能。
+  - Sentinel エラー `ErrGatewaySubjectGone` (404)、`ErrGatewayUnauthorized` (401)、`ErrGatewayLoopbackRequired` (403)、`ErrGatewayUpstreamFailure` (502)、`ErrGatewayBadRequest` (その他 4xx)、`ErrGatewayNonLoopback`。`FailureReasonAuthExpired` / recovery hint へのマッピングは PR-B に延期。
+  - `internal/github/client.go` — 動的トークン用 `NewClientWithTokenSource(ctx, ts, threshold)` を追加（`invalidatingTransport` は付与せず、PR-B で対応）。
+  - `internal/tools/server.go` — `BuilderOptions{GatewayClientFactory}` と `BuildStreamableHandlerWithOptions` を追加。既存 `BuildStreamableHandler(db, threshold)` のシグネチャは維持。
+  - `cmd/server/main.go` — `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` と `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` の両方を設定したときのみ opt-in。未設定時は従来通り `oauth2.StaticTokenSource`（動作変更なし）。片方のみ設定された場合は fail-closed で起動を中断。
+  - gateway に送る **subject** は認証済み GitHub login（gateway 仕様に準拠）。
+  - **制約**: PoC のためクライアントと gateway は同一ホスト (loopback) 必須。Docker Compose の複数コンテナ構成は PR-A では非対応。
+
+### 変更
+
+- `watch.Options.ClientFactory` のシグネチャを `func(ctx, token string) ReviewDataFetcher` から `func(ctx, token, login string) ReviewDataFetcher` に拡張。内部呼び出し側のみの修正。
+
 ## [3.1.0] - 2026-05-09
 
 ### 追加

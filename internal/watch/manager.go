@@ -90,7 +90,7 @@ type Options struct {
 	MaxWatchDuration time.Duration
 	Threshold        time.Duration
 	InvalidateToken  func(string)
-	ClientFactory    func(ctx context.Context, token string) ReviewDataFetcher
+	ClientFactory    func(ctx context.Context, token, login string) ReviewDataFetcher
 	Now              func() time.Time
 	// NotifyResourceUpdated is called asynchronously whenever a watch transitions
 	// state. The uri argument is the resource URI of the changed watch
@@ -132,7 +132,7 @@ type Manager struct {
 	pollTimeout           time.Duration
 	maxWatchDuration      time.Duration
 	notifyResourceUpdated func(uri string)
-	clientFactory         func(ctx context.Context, token string) ReviewDataFetcher
+	clientFactory         func(ctx context.Context, token, login string) ReviewDataFetcher
 	now                   func() time.Time
 	ctx                   context.Context
 	cancel                context.CancelFunc
@@ -197,7 +197,7 @@ func NewManager(db watchStore, opts Options) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	clientFactory := opts.ClientFactory
 	if clientFactory == nil {
-		clientFactory = func(ctx context.Context, token string) ReviewDataFetcher {
+		clientFactory = func(ctx context.Context, token, _ string) ReviewDataFetcher {
 			return ghclient.NewClient(ctx, token, opts.Threshold, opts.InvalidateToken)
 		}
 	}
@@ -300,7 +300,7 @@ func (m *Manager) Start(in StartInput) (Snapshot, bool, error) {
 			if tokenChanged {
 				existing.token = in.Token
 				existing.clientMu.Lock()
-				existing.client = m.clientFactory(existing.ctx, in.Token)
+				existing.client = m.clientFactory(existing.ctx, in.Token, key.login)
 				existing.clientMu.Unlock()
 			}
 			if triggerLinked {
@@ -328,7 +328,7 @@ func (m *Manager) Start(in StartInput) (Snapshot, bool, error) {
 		token:         in.Token,
 		ctx:           watchCtx,
 		cancel:        cancel,
-		client:        m.clientFactory(watchCtx, in.Token),
+		client:        m.clientFactory(watchCtx, in.Token, key.login),
 		status:        StatusWatching,
 		workerRunning: true,
 		startedAt:     now,

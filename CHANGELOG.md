@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase B delegated background access — client core (PR-A)** for [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
+  - `internal/github/gateway_token_source.go` — `gatewayTokenSource` implements `oauth2.TokenSource` against the gateway's `POST /internal/v1/whoami` endpoint. Validates loopback host (`127.0.0.1` / `::1` / `localhost`) at construction; parses `expires_at` into `oauth2.Token.Expiry` so `oauth2.ReuseTokenSource` only re-resolves near expiry.
+  - Sentinel errors `ErrGatewaySubjectGone` (404), `ErrGatewayUnauthorized` (401), `ErrGatewayLoopbackRequired` (403), `ErrGatewayUpstreamFailure` (502), `ErrGatewayBadRequest` (other 4xx), `ErrGatewayNonLoopback`. Mapping to `FailureReasonAuthExpired` / recovery hints is deferred to PR-B.
+  - `internal/github/client.go` — new `NewClientWithTokenSource(ctx, ts, threshold)` for dynamic-token clients (no `invalidatingTransport`; activation deferred to PR-B).
+  - `internal/tools/server.go` — new `BuilderOptions{GatewayClientFactory}` and `BuildStreamableHandlerWithOptions`. Existing `BuildStreamableHandler(db, threshold)` is unchanged.
+  - `cmd/server/main.go` — opt-in via `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` and `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET`. When unset, watch goroutines keep using `oauth2.StaticTokenSource` (no behavior change). Fail-closed: setting only one of the two env vars exits at startup.
+  - **Subject** sent to the gateway is the authenticated GitHub login (per gateway docs).
+  - **Limitation**: PoC requires client and gateway on the same host (loopback). Cross-container Docker Compose deployments are not supported in PR-A.
+
+### Changed
+
+- `watch.Options.ClientFactory` signature extended from `func(ctx, token string) ReviewDataFetcher` to `func(ctx, token, login string) ReviewDataFetcher`. Internal-only callers updated.
+
 ## [3.1.0] - 2026-05-09
 
 ### Added
