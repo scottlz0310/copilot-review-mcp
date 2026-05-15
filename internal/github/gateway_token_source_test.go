@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -342,8 +343,10 @@ func TestGatewayTokenSource_ReuseTokenSourceCachesUntilExpiry(t *testing.T) {
 	}
 }
 
-// slowReader pauses for the configured duration to simulate a slow gateway,
+// slowResponder pauses for the configured duration to simulate a slow gateway,
 // allowing the test to assert that the source's per-call timeout fires.
+// The body is a fully valid whoamiResponse (with expires_at) so any failure
+// must come from the timeout itself, not from validation falling through.
 type slowResponder struct {
 	delay time.Duration
 }
@@ -351,7 +354,8 @@ type slowResponder struct {
 func (s slowResponder) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	time.Sleep(s.delay)
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, `{"access_token":"x","token_type":"bearer"}`)
+	exp := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	_, _ = io.WriteString(w, `{"access_token":"x","token_type":"bearer","expires_at":"`+exp+`"}`)
 }
 
 func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
@@ -368,8 +372,17 @@ func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGatewayTokenSource: %v", err)
 	}
-	if _, err := ts.Token(); err == nil {
+	_, err = ts.Token()
+	if err == nil {
 		t.Fatal("expected timeout error, got nil")
+	}
+	// Must be a timeout, not (for example) ErrGatewayInvalidExpiry from a
+	// request that unexpectedly completed. http.Client.Timeout surfaces as
+	// a url.Error whose underlying err satisfies net.Error.Timeout(); the
+	// context deadline path satisfies errors.Is(err, context.DeadlineExceeded).
+	var nerr net.Error
+	if !(errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout())) {
+		t.Fatalf("expected timeout error (context.DeadlineExceeded or net.Error.Timeout()=true), got %v", err)
 	}
 }
 
@@ -383,6 +396,7 @@ func TestGatewayTokenSource_ParentContextCancelPropagates(t *testing.T) {
 	srv := fakeWhoamiServer(t, "s", "alice", http.StatusOK, whoamiResponse{
 		AccessToken: "gho_x",
 		TokenType:   "bearer",
+		ExpiresAt:   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 	})
 	t.Cleanup(srv.Close)
 	parent, cancel := context.WithCancel(context.Background())
@@ -397,8 +411,14 @@ func TestGatewayTokenSource_ParentContextCancelPropagates(t *testing.T) {
 		t.Fatalf("NewGatewayTokenSource: %v", err)
 	}
 	cancel()
-	if _, err := ts.Token(); err == nil {
+	_, err = ts.Token()
+	if err == nil {
 		t.Fatal("expected Token() to fail when parent context is cancelled, got nil")
+	}
+	// Assert the cancellation actually propagated — not that the request
+	// completed and then failed validation (e.g. ErrGatewayInvalidExpiry).
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
 
