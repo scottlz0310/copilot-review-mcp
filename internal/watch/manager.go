@@ -68,6 +68,7 @@ type Snapshot struct {
 	LastPolledAt     *time.Time
 	RateLimitResetAt *time.Time
 	LastError        *string
+	RecoveryHint     *string
 }
 
 // StartInput identifies a PR watch owned by one authenticated GitHub user.
@@ -180,6 +181,7 @@ type watchState struct {
 	lastError            *string
 	rateLimitResetAt     *time.Time
 	upstreamFailureCount int
+	recoveryHint         *string
 }
 
 // NewManager creates a process-local, memory-only watch manager.
@@ -316,6 +318,7 @@ func (m *Manager) Start(in StartInput) (Snapshot, bool, error) {
 				// New credentials start a fresh upstream-failure budget.
 				existing.upstreamFailureCount = 0
 				existing.lastError = nil
+				existing.recoveryHint = nil
 			}
 			if triggerLinked {
 				existing.triggerLogID = cloneInt64Ptr(triggerLogID)
@@ -522,7 +525,7 @@ func (m *Manager) CancelByID(login, watchID string) (CancelResult, error) {
 		if hasCancelByIDTriggerLogID {
 			cancelByIDTriggerLogID = *state.triggerLogID
 		}
-		m.finishLocked(state, StatusCancelled, nil, now, "watch was cancelled manually")
+		m.finishLocked(state, StatusCancelled, nil, now, "watch was cancelled manually", nil)
 		snapshot := snapshotFromState(state)
 		m.mu.Unlock()
 		if hasCancelByIDTriggerLogID {
@@ -579,7 +582,7 @@ func (m *Manager) CancelLatest(login, owner, repo string, pr int) (CancelResult,
 			if hasCancelLatestTriggerLogID {
 				cancelLatestTriggerLogID = *state.triggerLogID
 			}
-			m.finishLocked(state, StatusCancelled, nil, now, "watch was cancelled manually")
+			m.finishLocked(state, StatusCancelled, nil, now, "watch was cancelled manually", nil)
 			snapshot := snapshotFromState(state)
 			m.mu.Unlock()
 			if hasCancelLatestTriggerLogID {
@@ -697,10 +700,12 @@ func (m *Manager) pollOnce(watchID string) bool {
 			return m.handleUpstreamFailure(w.id, now, err.Error())
 		}
 		reason := FailureReasonGitHubError
+		var hint *string
 		if ghclient.IsAuthError(err) || ghclient.IsGatewayAuthError(err) {
 			reason = FailureReasonAuthExpired
+			hint = gatewayRecoveryHint(err)
 		}
-		m.finishFailureWithPoll(w.id, now, reason, err.Error())
+		m.finishFailureWithHint(w.id, now, reason, err.Error(), hint)
 		return true
 	}
 
@@ -737,7 +742,7 @@ func (m *Manager) pollOnce(watchID string) bool {
 		} else {
 			current.rateLimitResetAt = cloneTimePtr(&data.RateLimitReset)
 		}
-		m.finishLocked(current, StatusRateLimited, nil, now, formatRateLimitMessage(data.RateLimitRemaining, data.RateLimitReset))
+		m.finishLocked(current, StatusRateLimited, nil, now, formatRateLimitMessage(data.RateLimitRemaining, data.RateLimitReset), nil)
 		m.mu.Unlock()
 		return true
 	}
@@ -764,7 +769,7 @@ func (m *Manager) pollOnce(watchID string) bool {
 			id := entry.ID
 			current.triggerLogID = &id
 		}
-		m.finishLocked(current, terminalStatus, nil, now, "")
+		m.finishLocked(current, terminalStatus, nil, now, "", nil)
 		m.mu.Unlock()
 		return true
 	}
@@ -813,20 +818,39 @@ func (m *Manager) pollOnce(watchID string) bool {
 
 func (m *Manager) finishFailureWithPoll(watchID string, now time.Time, reason FailureReason, errText string) {
 	reasonCopy := reason
-	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, true)
+	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, true, nil)
 }
 
 func (m *Manager) finishFailureWithoutPoll(watchID string, now time.Time, reason FailureReason, errText string) {
 	reasonCopy := reason
-	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, false)
+	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, false, nil)
 }
 
 func (m *Manager) finishStatusWithPoll(watchID string, now time.Time, status Status, reason *FailureReason, errText string) {
-	m.finishState(watchID, now, status, reason, errText, true)
+	m.finishState(watchID, now, status, reason, errText, true, nil)
 }
 
 func (m *Manager) finishStatusWithoutPoll(watchID string, now time.Time, status Status, reason *FailureReason, errText string) {
-	m.finishState(watchID, now, status, reason, errText, false)
+	m.finishState(watchID, now, status, reason, errText, false, nil)
+}
+
+func (m *Manager) finishFailureWithHint(watchID string, now time.Time, reason FailureReason, errText string, hint *string) {
+	reasonCopy := reason
+	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, true, hint)
+}
+
+// gatewayRecoveryHint returns a user-readable recovery instruction for gateway
+// auth sentinel errors. It covers the two permanent failure modes that map to
+// FailureReasonAuthExpired; for all other auth errors a generic hint is returned.
+func gatewayRecoveryHint(err error) *string {
+	switch {
+	case errors.Is(err, ghclient.ErrGatewaySubjectGone):
+		return stringPtr("Re-authenticate: the gateway has no cached token for this user. A fresh client request will re-seed the gateway cache.")
+	case errors.Is(err, ghclient.ErrGatewayRotationFailed):
+		return stringPtr("Re-authenticate: your GitHub refresh token was rejected during rotation and cannot be renewed automatically.")
+	default:
+		return stringPtr("Re-authenticate with GitHub to continue watching.")
+	}
 }
 
 // handleUpstreamFailure counts consecutive ErrGatewayUpstreamFailure errors and
@@ -845,8 +869,9 @@ func (m *Manager) handleUpstreamFailure(watchID string, now time.Time, errText s
 		count := w.upstreamFailureCount
 		msg := fmt.Sprintf("gateway upstream_failure persisted after %d consecutive failures; re-authenticate: %s", count, errText)
 		reason := FailureReasonAuthExpired
+		hint := stringPtr(fmt.Sprintf("Re-authenticate or retry later: gateway upstream was unreachable for %d consecutive polls.", count))
 		m.markPollLocked(w, now)
-		m.finishLocked(w, StatusFailed, &reason, now, msg)
+		m.finishLocked(w, StatusFailed, &reason, now, msg, hint)
 		m.mu.Unlock()
 		return true
 	}
@@ -869,7 +894,7 @@ func (m *Manager) handleUpstreamFailure(watchID string, now time.Time, errText s
 	return false
 }
 
-func (m *Manager) finishState(watchID string, now time.Time, status Status, reason *FailureReason, errText string, countedPoll bool) {
+func (m *Manager) finishState(watchID string, now time.Time, status Status, reason *FailureReason, errText string, countedPoll bool, hint *string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -883,7 +908,7 @@ func (m *Manager) finishState(watchID string, now time.Time, status Status, reas
 	} else {
 		w.updatedAt = now
 	}
-	m.finishLocked(w, status, reason, now, errText)
+	m.finishLocked(w, status, reason, now, errText, hint)
 }
 
 func (m *Manager) markStale(watchID, errText string) {
@@ -896,7 +921,7 @@ func (m *Manager) markStale(watchID, errText string) {
 	}
 
 	now := m.now().UTC()
-	m.finishLocked(w, StatusStale, nil, now, errText)
+	m.finishLocked(w, StatusStale, nil, now, errText, nil)
 }
 
 func (m *Manager) markPollLocked(w *watchState, now time.Time) {
@@ -905,9 +930,10 @@ func (m *Manager) markPollLocked(w *watchState, now time.Time) {
 	w.lastPolledAt = timePtr(now)
 }
 
-func (m *Manager) finishLocked(w *watchState, status Status, reason *FailureReason, now time.Time, errText string) {
+func (m *Manager) finishLocked(w *watchState, status Status, reason *FailureReason, now time.Time, errText string, hint *string) {
 	w.status = status
 	w.failureReason = reason
+	w.recoveryHint = hint
 	w.terminal = true
 	w.workerRunning = false
 	w.updatedAt = now
@@ -957,6 +983,7 @@ func snapshotFromState(w *watchState) Snapshot {
 		LastPolledAt:     cloneTimePtr(w.lastPolledAt),
 		RateLimitResetAt: cloneTimePtr(w.rateLimitResetAt),
 		LastError:        cloneStringPtr(w.lastError),
+		RecoveryHint:     cloneStringPtr(w.recoveryHint),
 	}
 }
 

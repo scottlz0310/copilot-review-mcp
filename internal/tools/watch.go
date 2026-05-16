@@ -47,6 +47,7 @@ type ReviewWatchView struct {
 	StaleAt               *string `json:"stale_at,omitempty"`
 	RateLimitResetAt      *string `json:"rate_limit_reset_at,omitempty"`
 	LastError             *string `json:"last_error,omitempty"`
+	RecoveryHint          *string `json:"recovery_hint,omitempty"`
 }
 
 // StartReviewWatchInput is the input schema for start_copilot_review_watch.
@@ -353,6 +354,7 @@ func buildReviewWatchView(snapshot watch.Snapshot, pollInterval time.Duration, n
 		StartedAt:             snapshot.StartedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             snapshot.UpdatedAt.UTC().Format(time.RFC3339),
 		LastError:             snapshot.LastError,
+		RecoveryHint:          snapshot.RecoveryHint,
 	}
 	if snapshot.ReviewStatus != nil {
 		status := string(*snapshot.ReviewStatus)
