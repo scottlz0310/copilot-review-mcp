@@ -80,7 +80,7 @@ type StreamableHandler struct {
 }
 
 // sessionRecorder wraps http.ResponseWriter and calls rememberSession at the
-// moment the SDK first commits response headers (WriteHeader or Write),
+// moment the SDK first commits response headers (WriteHeader, Write, or Flush),
 // ensuring the session is registered before any bytes reach the client. This
 // closes the race where a client reads the Mcp-Session-Id from the response
 // and immediately sends a follow-up request before ServeHTTP returns.
@@ -110,8 +110,14 @@ func (sr *sessionRecorder) Write(b []byte) (int, error) {
 }
 
 // Flush implements http.Flusher so SSE events are pushed to the client
-// immediately rather than being held in a buffer.
+// immediately rather than being held in a buffer. It also calls rememberSession
+// via once.Do in case the SDK flushes headers before calling Write or WriteHeader.
 func (sr *sessionRecorder) Flush() {
+	sr.once.Do(func() {
+		if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
+			sr.handler.rememberSession(sid, sr.login)
+		}
+	})
 	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}

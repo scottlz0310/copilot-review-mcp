@@ -455,7 +455,8 @@ func TestManagerRecoveryHintNilForNonGatewayError(t *testing.T) {
 // TestManagerRecoveryHintPersistedAndReconstructed verifies that after a watch
 // terminates with an AUTH_EXPIRED failure reason the recovery_hint written to the
 // DB by persistLocked is correctly reconstructed by snapshotFromReviewWatchEntry
-// when a new manager instance reads the STALE entry (simulating a process restart).
+// when a new manager instance reads the historical terminal entry from the DB
+// (simulating a process restart).
 func TestManagerRecoveryHintPersistedAndReconstructed(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "manager-hint-persist.db")
 
@@ -496,7 +497,8 @@ func TestManagerRecoveryHintPersistedAndReconstructed(t *testing.T) {
 	}
 
 	// Phase 2: open a fresh manager from the same DB — simulates process restart.
-	// The watch is now STALE; GetByID must use snapshotFromReviewWatchEntry.
+	// The watch is a historical terminal entry (FAILED, is_active=false) and will
+	// not be marked STALE by Open; GetByID must use snapshotFromReviewWatchEntry.
 	{
 		db2, err := store.Open(dbPath)
 		if err != nil {

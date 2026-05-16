@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -547,5 +548,119 @@ func TestUpsertReviewWatchNilRecoveryHintRoundTrips(t *testing.T) {
 	}
 	if got.RecoveryHint != nil {
 		t.Fatalf("RecoveryHint = %q, want nil", *got.RecoveryHint)
+	}
+}
+
+// TestRecoveryHintMigrationOnLegacyDB verifies that store.Open applies the
+// ALTER TABLE migration to a pre-existing database that does not yet have the
+// recovery_hint column, and that round-trip reads/writes work after migration.
+func TestRecoveryHintMigrationOnLegacyDB(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-no-hint.db")
+
+	// Build a legacy DB without the recovery_hint column.
+	legacySchema := `
+CREATE TABLE IF NOT EXISTS trigger_log (
+    id           INTEGER PRIMARY KEY,
+    owner        TEXT    NOT NULL,
+    repo         TEXT    NOT NULL,
+    pr           INTEGER NOT NULL,
+    trigger      TEXT    NOT NULL,
+    requested_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    completed_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS review_watch (
+    id                  TEXT PRIMARY KEY,
+    github_login        TEXT    NOT NULL,
+    owner               TEXT    NOT NULL,
+    repo                TEXT    NOT NULL,
+    pr                  INTEGER NOT NULL,
+    trigger_log_id      INTEGER,
+    resource_uri        TEXT,
+    watch_status        TEXT    NOT NULL,
+    review_status       TEXT,
+    failure_reason      TEXT,
+    is_active           INTEGER NOT NULL DEFAULT 1,
+    started_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL,
+    completed_at        INTEGER,
+    stale_at            INTEGER,
+    last_error          TEXT,
+    rate_limit_reset_at INTEGER
+    -- no recovery_hint column (legacy schema)
+);
+`
+	rawDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open(legacy) error = %v", err)
+	}
+	if _, err := rawDB.Exec(legacySchema); err != nil {
+		_ = rawDB.Close()
+		t.Fatalf("Exec(legacySchema) error = %v", err)
+	}
+	// Insert a legacy row without recovery_hint.
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	_, err = rawDB.Exec(
+		`INSERT INTO review_watch
+		   (id, github_login, owner, repo, pr, watch_status, is_active, started_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"cw_legacy", "alice", "octo", "demo", 77, "FAILED", 0,
+		startedAt.Unix(), startedAt.Unix(),
+	)
+	if err != nil {
+		_ = rawDB.Close()
+		t.Fatalf("Insert legacy row error = %v", err)
+	}
+	if err := rawDB.Close(); err != nil {
+		t.Fatalf("rawDB.Close() error = %v", err)
+	}
+
+	// Re-open with store.Open — this must apply the migration.
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("store.Open(migrated) error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// Legacy row must be readable with RecoveryHint = nil.
+	got, err := db.GetReviewWatchByID("cw_legacy")
+	if err != nil {
+		t.Fatalf("GetReviewWatchByID(legacy) error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetReviewWatchByID(legacy) = nil, want row")
+	}
+	if got.RecoveryHint != nil {
+		t.Fatalf("legacy row RecoveryHint = %q, want nil", *got.RecoveryHint)
+	}
+
+	// New rows with RecoveryHint must round-trip correctly after migration.
+	hint := "Re-authenticate via gh auth login"
+	newEntry := ReviewWatchEntry{
+		ID:           "cw_migrated_hint",
+		GitHubLogin:  "alice",
+		Owner:        "octo",
+		Repo:         "demo",
+		PR:           78,
+		WatchStatus:  "FAILED",
+		IsActive:     false,
+		StartedAt:    startedAt,
+		UpdatedAt:    startedAt,
+		RecoveryHint: strPtr(hint),
+	}
+	if err := db.UpsertReviewWatch(newEntry); err != nil {
+		t.Fatalf("UpsertReviewWatch(post-migration) error = %v", err)
+	}
+	migrated, err := db.GetReviewWatchByID(newEntry.ID)
+	if err != nil {
+		t.Fatalf("GetReviewWatchByID(post-migration) error = %v", err)
+	}
+	if migrated == nil {
+		t.Fatal("GetReviewWatchByID(post-migration) = nil, want row")
+	}
+	if migrated.RecoveryHint == nil {
+		t.Fatal("post-migration RecoveryHint = nil, want non-nil")
+	}
+	if *migrated.RecoveryHint != hint {
+		t.Fatalf("post-migration RecoveryHint = %q, want %q", *migrated.RecoveryHint, hint)
 	}
 }
