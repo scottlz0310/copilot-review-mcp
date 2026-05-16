@@ -313,6 +313,9 @@ func (m *Manager) Start(in StartInput) (Snapshot, bool, error) {
 				existing.clientMu.Lock()
 				existing.client = m.clientFactory(existing.ctx, in.Token, key.login)
 				existing.clientMu.Unlock()
+				// New credentials start a fresh upstream-failure budget.
+				existing.upstreamFailureCount = 0
+				existing.lastError = nil
 			}
 			if triggerLinked {
 				existing.triggerLogID = cloneInt64Ptr(triggerLogID)

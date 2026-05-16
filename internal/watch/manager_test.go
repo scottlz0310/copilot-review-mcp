@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -492,6 +493,101 @@ func TestManagerGatewayUpstreamFailureCounterResetsOnSuccess(t *testing.T) {
 	})
 	if snapshot.WatchStatus != StatusCompleted {
 		t.Fatalf("WatchStatus = %q, want %q: counter reset by intermediate success must allow final completion",
+			snapshot.WatchStatus, StatusCompleted)
+	}
+	if snapshot.FailureReason != nil {
+		t.Fatalf("FailureReason = %q, want nil", *snapshot.FailureReason)
+	}
+	if snapshot.LastError != nil {
+		t.Fatalf("LastError = %q, want nil after successful completion", *snapshot.LastError)
+	}
+}
+
+func TestManagerUpstreamFailureCounterResetsOnTokenChange(t *testing.T) {
+	// If a watch has accumulated threshold-1 consecutive upstream failures and
+	// the caller then calls Start() with a new token, the failure counter must be
+	// reset to 0. Without this reset, the very first upstream failure after
+	// re-authentication would immediately escalate to FAILED/AUTH_EXPIRED.
+	const threshold = 3
+	reviewTime := time.Now().Add(time.Minute)
+	db := openTestDB(t)
+
+	// tokenABlocked is closed when the token-a fetcher has fired threshold-1
+	// times and is now blocking, waiting for the main goroutine to swap tokens.
+	tokenABlocked := make(chan struct{})
+	tokenAUnblock := make(chan struct{})
+
+	manager := NewManager(db, Options{
+		PollInterval:             5 * time.Millisecond,
+		Threshold:                30 * time.Second,
+		UpstreamFailureThreshold: threshold,
+		ClientFactory: func(_ context.Context, token, _ string) ReviewDataFetcher {
+			if token != "token-a" {
+				return &fakeFetcher{results: []fetchResult{
+					{data: &ghclient.ReviewData{
+						LatestCopilotReview: newReview("APPROVED", &reviewTime),
+						RateLimitRemaining:  100,
+					}},
+				}}
+			}
+			var callCount int32
+			var once sync.Once
+			return &callbackFetcher{fn: func() (*ghclient.ReviewData, error) {
+				n := atomic.AddInt32(&callCount, 1)
+				if int(n) >= threshold-1 {
+					once.Do(func() { close(tokenABlocked) })
+					// Block until the main goroutine has swapped the token,
+					// preventing any further upstream failures from incrementing
+					// the counter before the reset takes effect.
+					<-tokenAUnblock
+				}
+				return nil, ghclient.ErrGatewayUpstreamFailure
+			}}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice",
+		Token: "token-a",
+		Owner: "octo",
+		Repo:  "demo",
+		PR:    904,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	select {
+	case <-tokenABlocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for upstream failures to accumulate")
+	}
+
+	// The token-a fetcher is now blocked inside its call; the poll goroutine
+	// holds no manager lock. Swap the token; this must reset upstreamFailureCount.
+	_, reused, err := manager.Start(StartInput{
+		Login: "alice",
+		Token: "token-b",
+		Owner: "octo",
+		Repo:  "demo",
+		PR:    904,
+	})
+	if err != nil {
+		t.Fatalf("Start() token refresh error = %v", err)
+	}
+	if !reused {
+		t.Fatal("Start() reused = false, want true: token refresh must reuse existing watch")
+	}
+
+	// Unblock the fetcher so the poll loop can continue with the new client.
+	close(tokenAUnblock)
+
+	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
+		return s.Terminal
+	})
+	if snapshot.WatchStatus != StatusCompleted {
+		t.Fatalf("WatchStatus = %q, want %q: upstreamFailureCount must be reset on token refresh",
 			snapshot.WatchStatus, StatusCompleted)
 	}
 	if snapshot.FailureReason != nil {
@@ -1292,6 +1388,14 @@ type fakeFetcher struct {
 }
 
 type blockingFetcher struct{}
+
+type callbackFetcher struct {
+	fn func() (*ghclient.ReviewData, error)
+}
+
+func (f *callbackFetcher) GetReviewData(_ context.Context, _, _ string, _ int) (*ghclient.ReviewData, error) {
+	return f.fn()
+}
 
 type persistFailDB struct {
 	*store.DB
