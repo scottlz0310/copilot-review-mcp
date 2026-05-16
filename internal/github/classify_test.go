@@ -159,6 +159,8 @@ func TestClassifyGitHubError_GatewaySentinels(t *testing.T) {
 		{"ErrGatewayUnauthorized", ghclient.ErrGatewayUnauthorized, autherr.AUTH_REQUIRED},
 		{"ErrGatewayLoopbackRequired", ghclient.ErrGatewayLoopbackRequired, autherr.AUTH_REQUIRED},
 		{"ErrGatewayBadRequest", ghclient.ErrGatewayBadRequest, autherr.VALIDATION_ERROR},
+		{"ErrGatewayInvalidExpiry", ghclient.ErrGatewayInvalidExpiry, autherr.TRANSIENT_UPSTREAM_ERROR},
+		{"wrapped ErrGatewayInvalidExpiry", fmt.Errorf("outer: %w", ghclient.ErrGatewayInvalidExpiry), autherr.TRANSIENT_UPSTREAM_ERROR},
 		{"wrapped ErrGatewayRotationFailed", fmt.Errorf("outer: %w", ghclient.ErrGatewayRotationFailed), autherr.TOKEN_REFRESH_FAILED},
 		{"wrapped ErrGatewayUpstreamFailure", fmt.Errorf("outer: %w", ghclient.ErrGatewayUpstreamFailure), autherr.TRANSIENT_UPSTREAM_ERROR},
 	}
