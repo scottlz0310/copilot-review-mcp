@@ -348,3 +348,42 @@ func handlerSessionLoginCount(handler *StreamableHandler) int {
 	defer handler.mu.Unlock()
 	return len(handler.sessionLogins)
 }
+
+// TestSessionRecorderFlushRegistersSession verifies that sessionRecorder.Flush
+// calls rememberSession before forwarding to the underlying http.Flusher,
+// covering the race path where the SDK sets Mcp-Session-Id and flushes headers
+// without a prior Write or WriteHeader call.
+func TestSessionRecorderFlushRegistersSession(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	rec := httptest.NewRecorder()
+	rec.Header().Set(mcpSessionIDHeader, "flush-session-id")
+
+	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
+	sr.Flush()
+
+	handler.mu.Lock()
+	login, registered := handler.sessionLogins["flush-session-id"]
+	handler.mu.Unlock()
+
+	if !registered {
+		t.Fatal("Flush() did not register session via rememberSession")
+	}
+	if login != "alice" {
+		t.Fatalf("Flush() registered login = %q, want alice", login)
+	}
+	if !rec.Flushed {
+		t.Fatal("Flush() did not forward to the underlying http.Flusher")
+	}
+
+	// A second Flush must not double-register (once.Do guarantee).
+	sr.Flush()
+	handler.mu.Lock()
+	count := len(handler.sessionLogins)
+	handler.mu.Unlock()
+	if count != 1 {
+		t.Fatalf("session login count after second Flush = %d, want 1 (once.Do)", count)
+	}
+}

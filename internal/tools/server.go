@@ -91,33 +91,29 @@ type sessionRecorder struct {
 	once    sync.Once
 }
 
+// captureSession reads Mcp-Session-Id from the response headers and calls
+// rememberSession. It is invoked via once.Do so it runs at most once per request.
+func (sr *sessionRecorder) captureSession() {
+	if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
+		sr.handler.rememberSession(sid, sr.login)
+	}
+}
+
 func (sr *sessionRecorder) WriteHeader(code int) {
-	sr.once.Do(func() {
-		if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
-			sr.handler.rememberSession(sid, sr.login)
-		}
-	})
+	sr.once.Do(sr.captureSession)
 	sr.ResponseWriter.WriteHeader(code)
 }
 
 func (sr *sessionRecorder) Write(b []byte) (int, error) {
-	sr.once.Do(func() {
-		if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
-			sr.handler.rememberSession(sid, sr.login)
-		}
-	})
+	sr.once.Do(sr.captureSession)
 	return sr.ResponseWriter.Write(b)
 }
 
 // Flush implements http.Flusher so SSE events are pushed to the client
-// immediately rather than being held in a buffer. It also calls rememberSession
+// immediately rather than being held in a buffer. It also calls captureSession
 // via once.Do in case the SDK flushes headers before calling Write or WriteHeader.
 func (sr *sessionRecorder) Flush() {
-	sr.once.Do(func() {
-		if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
-			sr.handler.rememberSession(sid, sr.login)
-		}
-	})
+	sr.once.Do(sr.captureSession)
 	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
