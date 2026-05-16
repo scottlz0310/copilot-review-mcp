@@ -292,7 +292,7 @@ func (g *gatewayTokenSource) Token() (*oauth2.Token, error) {
 			Error string `json:"error"`
 		}
 		_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&gatewayErr)
-		_, _ = io.Copy(io.Discard, resp.Body) // drain any remainder
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16)) // drain any remainder
 		if gatewayErr.Error == "rotation_failed" {
 			return nil, ErrGatewayRotationFailed
 		}
