@@ -11,6 +11,10 @@
 
 ### 追加
 
+- **Phase B 委譲バックグラウンドアクセス — gateway 統合テスト (PR-C)** — [Issue #40](https://github.com/scottlz0310/copilot-review-mcp/issues/40)（[Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29) の一部）:
+  - `internal/watch/gateway_integration_test.go` で `gatewayTokenSource → oauth2.ReuseTokenSource → oauth2.Transport → *ghclient.Client → watch.Manager.pollOnce` の経路全体を fake `POST /internal/v1/whoami` と最小限の fake GitHub REST サーバで end-to-end 実行。production 配線 (`cmd/server/main.go` の `buildGatewayClientFactory`) と同じ組み立てを再現する。
+  - 6 シナリオを網羅: happy path (200 → `COMPLETED`)、subject gone (404 → `FAILED`/`AUTH_EXPIRED` + re-seed hint)、rotation_failed (502/rotation_failed → `FAILED`/`AUTH_EXPIRED` + refresh-rejected hint)、upstream_failure 単発で `WATCHING` 維持、upstream_failure 連続で `FAILED`/`AUTH_EXPIRED` + consecutive-polls hint、token rotation が GitHub 側に観測可能 (`oauth2.ReuseTokenSource` が rotate 後の値を取り直す)。
+  - 既存 `manager_test.go` の sentinel error 直接注入とは独立した経路で結線を検証し、factory リファクタ等で chain が壊れた場合に fail-closed する。
 - **Phase B 委譲バックグラウンドアクセス — クライアントコア (PR-A)** — [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
   - `internal/github/gateway_token_source.go` — gateway の `POST /internal/v1/whoami` を叩く `oauth2.TokenSource` 実装 `gatewayTokenSource`。コンストラクタで loopback ホスト (`127.0.0.1` / `::1` / `localhost`) を検証。`expires_at` を `oauth2.Token.Expiry` に反映するため `oauth2.ReuseTokenSource` で whoami 呼び出しを抑制可能。
   - Sentinel エラー `ErrGatewaySubjectGone` (404)、`ErrGatewayUnauthorized` (401)、`ErrGatewayLoopbackRequired` (403)、`ErrGatewayUpstreamFailure` (502)、`ErrGatewayBadRequest` (その他 4xx)、`ErrGatewayNonLoopback`。`FailureReasonAuthExpired` / recovery hint へのマッピングは PR-B に延期。
