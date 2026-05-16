@@ -147,6 +147,34 @@ func TestClassifyGitHubError_GraphQLStrings(t *testing.T) {
 	}
 }
 
+func TestClassifyGitHubError_GatewaySentinels(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		wantType autherr.AuthErrorType
+	}{
+		{"ErrGatewayRotationFailed", ghclient.ErrGatewayRotationFailed, autherr.TOKEN_REFRESH_FAILED},
+		{"ErrGatewaySubjectGone", ghclient.ErrGatewaySubjectGone, autherr.REAUTH_REQUIRED},
+		{"ErrGatewayUpstreamFailure", ghclient.ErrGatewayUpstreamFailure, autherr.TRANSIENT_UPSTREAM_ERROR},
+		{"ErrGatewayUnauthorized", ghclient.ErrGatewayUnauthorized, autherr.AUTH_REQUIRED},
+		{"ErrGatewayLoopbackRequired", ghclient.ErrGatewayLoopbackRequired, autherr.AUTH_REQUIRED},
+		{"ErrGatewayBadRequest", ghclient.ErrGatewayBadRequest, autherr.VALIDATION_ERROR},
+		{"wrapped ErrGatewayRotationFailed", fmt.Errorf("outer: %w", ghclient.ErrGatewayRotationFailed), autherr.TOKEN_REFRESH_FAILED},
+		{"wrapped ErrGatewayUpstreamFailure", fmt.Errorf("outer: %w", ghclient.ErrGatewayUpstreamFailure), autherr.TRANSIENT_UPSTREAM_ERROR},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ghclient.ClassifyGitHubError(tc.err)
+			if got == nil {
+				t.Fatalf("ClassifyGitHubError(%v) = nil, want %q", tc.err, tc.wantType)
+			}
+			if got.ErrorType != tc.wantType {
+				t.Errorf("ErrorType = %q, want %q", got.ErrorType, tc.wantType)
+			}
+		})
+	}
+}
+
 func TestClassifyGitHubError_UnknownError(t *testing.T) {
 	got := ghclient.ClassifyGitHubError(fmt.Errorf("something completely different"))
 	if got != nil {
