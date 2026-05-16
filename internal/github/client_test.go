@@ -112,7 +112,7 @@ func TestRequestCopilotReviewUsesRequestReviewsByLoginInput(t *testing.T) {
 		switch {
 		case strings.Contains(normalizedQuery, "pullRequest(number:$pr)") && strings.Contains(normalizedQuery, "id"):
 			sawNodeIDQuery.Store(true)
-			fmt.Fprintf(w, `{"data":{"repository":{"pullRequest":{"id":%q}}}}`, prNodeID)
+			_, _ = fmt.Fprintf(w, `{"data":{"repository":{"pullRequest":{"id":%q}}}}`, prNodeID)
 		case strings.Contains(normalizedQuery, "requestReviewsByLogin(input:$input)"):
 			sawRequestMutation.Store(true)
 			if !strings.Contains(normalizedQuery, "RequestReviewsByLoginInput") {
@@ -150,9 +150,9 @@ func TestRequestCopilotReviewUsesRequestReviewsByLoginInput(t *testing.T) {
 				t.Error("input.union = false, want true")
 			}
 
-			fmt.Fprint(w, `{"data":{"requestReviewsByLogin":{"clientMutationId":""}}}`)
+			_, _ = fmt.Fprint(w, `{"data":{"requestReviewsByLogin":{"clientMutationId":""}}}`)
 		default:
-			fmt.Fprint(w, `{"data":{}}`)
+			_, _ = fmt.Fprint(w, `{"data":{}}`)
 		}
 	}))
 	defer srv.Close()
@@ -519,11 +519,11 @@ func TestGetCIStatus(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, pr), func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, prJSON)
+				_, _ = fmt.Fprint(w, prJSON)
 			})
 			mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, sha), func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, tt.checksJSON)
+				_, _ = fmt.Fprint(w, tt.checksJSON)
 			})
 
 			c, teardown := newTestGHClient(mux)
@@ -545,7 +545,7 @@ func TestGetCIStatus(t *testing.T) {
 
 		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, pr), func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, prJSON)
+			_, _ = fmt.Fprint(w, prJSON)
 		})
 		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, sha), func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -556,10 +556,10 @@ func TestGetCIStatus(t *testing.T) {
 			pagesSeen = append(pagesSeen, page)
 			if page == "1" {
 				w.Header().Set("Link", fmt.Sprintf(`<http://%s/repos/%s/%s/commits/%s/check-runs?page=2>; rel="next"`, r.Host, owner, repo, sha))
-				fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":1,"status":"completed","conclusion":"success"}]}`)
+				_, _ = fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":1,"status":"completed","conclusion":"success"}]}`)
 				return
 			}
-			fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":2,"status":"completed","conclusion":"failure"}]}`)
+			_, _ = fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":2,"status":"completed","conclusion":"failure"}]}`)
 		})
 
 		c, teardown := newTestGHClient(mux)
@@ -583,7 +583,7 @@ func TestGetCIStatus(t *testing.T) {
 
 		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, pr), func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, prJSON)
+			_, _ = fmt.Fprint(w, prJSON)
 		})
 		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, sha), func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -594,10 +594,10 @@ func TestGetCIStatus(t *testing.T) {
 			pagesSeen = append(pagesSeen, page)
 			if page == "1" {
 				w.Header().Set("Link", fmt.Sprintf(`<http://%s/repos/%s/%s/commits/%s/check-runs?page=2>; rel="next"`, r.Host, owner, repo, sha))
-				fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":1,"status":"completed","conclusion":"success"}]}`)
+				_, _ = fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":1,"status":"completed","conclusion":"success"}]}`)
 				return
 			}
-			fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":2,"status":"completed","conclusion":"success"}]}`)
+			_, _ = fmt.Fprint(w, `{"total_count":2,"check_runs":[{"id":2,"status":"completed","conclusion":"success"}]}`)
 		})
 
 		c, teardown := newTestGHClient(mux)
@@ -650,7 +650,7 @@ func TestGetReviewDataTimeline(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-RateLimit-Remaining", "100")
 		w.Header().Set("X-RateLimit-Reset", "9999999999")
-		fmt.Fprint(w, body)
+		_, _ = fmt.Fprint(w, body)
 	}
 
 	mux := http.NewServeMux()
@@ -724,7 +724,7 @@ func TestGetReviewDataTimelinePicksLatestEvents(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-RateLimit-Remaining", "100")
 		w.Header().Set("X-RateLimit-Reset", "9999999999")
-		fmt.Fprint(w, body)
+		_, _ = fmt.Fprint(w, body)
 	}
 
 	mux := http.NewServeMux()

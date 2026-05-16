@@ -333,7 +333,7 @@ func TestOpenMarksActiveReviewWatchesStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store.Open(reopen) error = %v", err)
 	}
-	defer reopened.Close()
+	defer func() { _ = reopened.Close() }()
 
 	got, err := reopened.GetReviewWatchByID(entry.ID)
 	if err != nil {

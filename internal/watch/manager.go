@@ -1101,10 +1101,7 @@ func IsRateLimitHTTPError(err error) bool {
 		return true
 	}
 	var abuseErr *github.AbuseRateLimitError
-	if errors.As(err, &abuseErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &abuseErr)
 }
 
 // reviewStatusChanged reports whether the review status has changed between prev and curr.

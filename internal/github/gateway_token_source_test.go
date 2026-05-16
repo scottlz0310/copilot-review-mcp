@@ -387,7 +387,8 @@ func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
 	// a url.Error whose underlying err satisfies net.Error.Timeout(); the
 	// context deadline path satisfies errors.Is(err, context.DeadlineExceeded).
 	var nerr net.Error
-	if !(errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout())) {
+	isTimeout := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout())
+	if !isTimeout {
 		t.Fatalf("expected timeout error (context.DeadlineExceeded or net.Error.Timeout()=true), got %v", err)
 	}
 }

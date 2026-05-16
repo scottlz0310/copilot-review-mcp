@@ -34,7 +34,7 @@ func main() {
 		slog.Error("failed to open SQLite database", "path", cfg.sqlitePath, "err", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	slog.Info("auth mode: gateway (trusting X-Authenticated-User header from mcp-gateway)")
 
@@ -57,7 +57,7 @@ func main() {
 	// Health check (no auth required)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
 	// MCP endpoints (auth required) — Streamable HTTP transport (stateful, shared server)

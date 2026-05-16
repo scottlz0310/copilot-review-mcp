@@ -103,18 +103,18 @@ func TestStreamableHandlerRejectsSessionUserMismatch(t *testing.T) {
 	resp := postMCP(t, httpServer.URL, "token-a", "", initBody)
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("initialize status = %d, want 200; body=%s", resp.StatusCode, string(body))
 	}
 	sessionID := resp.Header.Get(mcpSessionIDHeader)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if sessionID == "" {
 		t.Fatal("initialize response missing Mcp-Session-Id")
 	}
 
 	initializedBody := []byte(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`)
 	resp = postMCP(t, httpServer.URL, "token-b", sessionID, initializedBody)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("mismatched session status = %d, want 403; body=%s", resp.StatusCode, string(body))
