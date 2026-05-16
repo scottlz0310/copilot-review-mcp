@@ -37,9 +37,17 @@ var (
 	// generally means client and gateway are not co-located on the same host.
 	ErrGatewayLoopbackRequired = errors.New("gateway: loopback required (403)")
 
-	// ErrGatewayUpstreamFailure indicates the gateway tried to rotate the
-	// token but the GitHub OAuth provider failed (HTTP 502). Retryable.
-	ErrGatewayUpstreamFailure = errors.New("gateway: upstream rotation failure (502)")
+	// ErrGatewayRotationFailed indicates the gateway tried to rotate the
+	// refresh token but the GitHub OAuth provider explicitly rejected it
+	// (HTTP 502 with body {"error":"rotation_failed"}). This is NOT
+	// transient: the user must re-authenticate to obtain a fresh refresh
+	// token. Distinct from ErrGatewayUpstreamFailure, which is retryable.
+	ErrGatewayRotationFailed = errors.New("gateway: refresh token rotation rejected (502/rotation_failed)")
+
+	// ErrGatewayUpstreamFailure indicates a transient upstream failure
+	// (HTTP 502 with body {"error":"upstream_failure"} or unrecognised
+	// body). Retry may succeed; if the error persists, re-authenticate.
+	ErrGatewayUpstreamFailure = errors.New("gateway: transient upstream failure (502)")
 
 	// ErrGatewayBadRequest covers 4xx responses that are neither 401/403/404.
 	ErrGatewayBadRequest = errors.New("gateway: bad request (4xx)")
@@ -264,26 +272,33 @@ func (g *gatewayTokenSource) Token() (*oauth2.Token, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		// Drain a bounded portion of the body so net/http can reuse the
-		// underlying connection on keep-alive. Errors here are ignored;
-		// connection reuse is best-effort, and we still want to surface
-		// the original status-derived error to the caller below.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-	}
-
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// fallthrough below
+		// fallthrough below; body is read after the switch
 	case http.StatusUnauthorized:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		return nil, ErrGatewayUnauthorized
 	case http.StatusForbidden:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		return nil, ErrGatewayLoopbackRequired
 	case http.StatusNotFound:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		return nil, ErrGatewaySubjectGone
 	case http.StatusBadGateway:
+		// Parse the gateway error body to distinguish rotation_failed (must
+		// re-auth) from upstream_failure (transient, retry may succeed). The
+		// blanket drain was moved here so 502 body is still available (#33).
+		var gatewayErr struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&gatewayErr)
+		_, _ = io.Copy(io.Discard, resp.Body) // drain any remainder
+		if gatewayErr.Error == "rotation_failed" {
+			return nil, ErrGatewayRotationFailed
+		}
 		return nil, ErrGatewayUpstreamFailure
 	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			return nil, fmt.Errorf("%w: status=%d", ErrGatewayBadRequest, resp.StatusCode)
 		}
