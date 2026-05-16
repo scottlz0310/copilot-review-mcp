@@ -109,14 +109,22 @@ func (sr *sessionRecorder) Write(b []byte) (int, error) {
 	return sr.ResponseWriter.Write(b)
 }
 
-// Flush implements http.Flusher so SSE events are pushed to the client
-// immediately rather than being held in a buffer. It also calls captureSession
-// via once.Do in case the SDK flushes headers before calling Write or WriteHeader.
-func (sr *sessionRecorder) Flush() {
-	sr.once.Do(sr.captureSession)
-	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
+// sessionRecorderFlusher wraps sessionRecorder and conditionally adds
+// http.Flusher. It is used only when the underlying ResponseWriter itself
+// implements http.Flusher, preserving the optional-interface contract:
+// handlers that check for Flusher support via type-assertion see the same
+// capability as the original writer.
+type sessionRecorderFlusher struct {
+	*sessionRecorder
+	flusher http.Flusher
+}
+
+// Flush calls captureSession (via once.Do) before forwarding to the
+// underlying http.Flusher so SSE events are pushed immediately and the
+// session is registered even when the SDK flushes before Write/WriteHeader.
+func (srf *sessionRecorderFlusher) Flush() {
+	srf.once.Do(srf.captureSession)
+	srf.flusher.Flush()
 }
 
 // ServeHTTP proxies requests to the underlying MCP streamable handler.
@@ -129,7 +137,14 @@ func (h *StreamableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sr := &sessionRecorder{ResponseWriter: w, login: login, handler: h}
-	h.handler.ServeHTTP(sr, r)
+	// Only advertise http.Flusher when the original writer supports it, to
+	// preserve the optional-interface contract for handlers that type-assert
+	// for Flusher (e.g., SSE/MCP streaming).
+	var rw http.ResponseWriter = sr
+	if f, ok := w.(http.Flusher); ok {
+		rw = &sessionRecorderFlusher{sessionRecorder: sr, flusher: f}
+	}
+	h.handler.ServeHTTP(rw, r)
 	// Fallback for implicit header commits: net/http writes headers on handler
 	// return if the handler never called Write, WriteHeader, or Flush. The
 	// once.Do is a no-op when captureSession already ran inside ServeHTTP.

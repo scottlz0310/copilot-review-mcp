@@ -386,7 +386,7 @@ func handlerSessionLoginCount(handler *StreamableHandler) int {
 	return len(handler.sessionLogins)
 }
 
-// TestSessionRecorderFlushRegistersSessionverifies that sessionRecorder.Flush
+// TestSessionRecorderFlushRegistersSession verifies that sessionRecorderFlusher.Flush
 // calls rememberSession before forwarding to the underlying http.Flusher,
 // covering the race path where the SDK sets Mcp-Session-Id and flushes headers
 // without a prior Write or WriteHeader call.
@@ -399,7 +399,8 @@ func TestSessionRecorderFlushRegistersSession(t *testing.T) {
 	rec.Header().Set(mcpSessionIDHeader, "flush-session-id")
 
 	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
-	sr.Flush()
+	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
+	srf.Flush()
 
 	handler.mu.Lock()
 	login, registered := handler.sessionLogins["flush-session-id"]
@@ -416,7 +417,7 @@ func TestSessionRecorderFlushRegistersSession(t *testing.T) {
 	}
 
 	// A second Flush must not double-register (once.Do guarantee).
-	sr.Flush()
+	srf.Flush()
 	handler.mu.Lock()
 	count := len(handler.sessionLogins)
 	handler.mu.Unlock()
