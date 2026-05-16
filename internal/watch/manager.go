@@ -703,7 +703,7 @@ func (m *Manager) pollOnce(watchID string) bool {
 		var hint *string
 		if ghclient.IsAuthError(err) || ghclient.IsGatewayAuthError(err) {
 			reason = FailureReasonAuthExpired
-			hint = gatewayRecoveryHint(err)
+			hint = authFailureRecoveryHint(err)
 		}
 		m.finishFailureWithHint(w.id, now, reason, err.Error(), hint)
 		return true
@@ -839,10 +839,10 @@ func (m *Manager) finishFailureWithHint(watchID string, now time.Time, reason Fa
 	m.finishState(watchID, now, StatusFailed, &reasonCopy, errText, true, hint)
 }
 
-// gatewayRecoveryHint returns a user-readable recovery instruction for gateway
-// auth sentinel errors. It covers the two permanent failure modes that map to
-// FailureReasonAuthExpired; for all other auth errors a generic hint is returned.
-func gatewayRecoveryHint(err error) *string {
+// authFailureRecoveryHint returns a user-readable recovery instruction for auth
+// failures that map to FailureReasonAuthExpired. Gateway-specific sentinels get
+// targeted messages; all other auth errors receive a generic re-auth hint.
+func authFailureRecoveryHint(err error) *string {
 	switch {
 	case errors.Is(err, ghclient.ErrGatewaySubjectGone):
 		return stringPtr("Re-authenticate: the gateway has no cached token for this user. A fresh client request will re-seed the gateway cache.")
@@ -867,7 +867,7 @@ func (m *Manager) handleUpstreamFailure(watchID string, now time.Time, errText s
 	w.upstreamFailureCount++
 	if w.upstreamFailureCount >= m.upstreamFailureThreshold {
 		count := w.upstreamFailureCount
-		msg := fmt.Sprintf("gateway upstream_failure persisted after %d consecutive failures; re-authenticate: %s", count, errText)
+		msg := fmt.Sprintf("gateway upstream_failure persisted after %d consecutive failures; re-authenticate or retry later: %s", count, errText)
 		reason := FailureReasonAuthExpired
 		hint := stringPtr(fmt.Sprintf("Re-authenticate or retry later: gateway upstream was unreachable for %d consecutive polls.", count))
 		m.markPollLocked(w, now)
