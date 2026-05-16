@@ -349,6 +349,109 @@ func TestManagerGatewayAuthExpiredFailsWatch(t *testing.T) {
 	}
 }
 
+func TestManagerRecoveryHintGatewayAuthSentinels(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		wantFrag string // substring expected in RecoveryHint
+	}{
+		{
+			name:     "ErrGatewaySubjectGone",
+			err:      ghclient.ErrGatewaySubjectGone,
+			wantFrag: "re-seed the gateway cache",
+		},
+		{
+			name:     "ErrGatewayRotationFailed",
+			err:      ghclient.ErrGatewayRotationFailed,
+			wantFrag: "refresh token was rejected",
+		},
+	}
+
+	for i, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			db := openTestDB(t)
+			manager := NewManager(db, Options{
+				PollInterval: 5 * time.Millisecond,
+				Threshold:    30 * time.Second,
+				ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+					return &fakeFetcher{results: []fetchResult{{err: tc.err}}}
+				},
+			})
+			t.Cleanup(manager.Close)
+
+			started, _, err := manager.Start(StartInput{
+				Login: "alice", Token: "tok", Owner: "octo", Repo: "demo",
+				PR: 1100 + i,
+			})
+			if err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+
+			snap := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool { return s.Terminal })
+			if snap.RecoveryHint == nil {
+				t.Fatalf("RecoveryHint = nil, want non-nil for %s", tc.name)
+			}
+			if !strings.Contains(*snap.RecoveryHint, tc.wantFrag) {
+				t.Fatalf("RecoveryHint = %q, want substring %q", *snap.RecoveryHint, tc.wantFrag)
+			}
+		})
+	}
+}
+
+func TestManagerRecoveryHintUpstreamThreshold(t *testing.T) {
+	const threshold = 3
+	db := openTestDB(t)
+	manager := NewManager(db, Options{
+		PollInterval:             5 * time.Millisecond,
+		Threshold:                30 * time.Second,
+		UpstreamFailureThreshold: threshold,
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+			return &fakeFetcher{results: []fetchResult{{err: ghclient.ErrGatewayUpstreamFailure}}}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice", Token: "tok", Owner: "octo", Repo: "demo", PR: 1102,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	snap := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool { return s.Terminal })
+	if snap.RecoveryHint == nil {
+		t.Fatalf("RecoveryHint = nil after upstream threshold escalation")
+	}
+	if !strings.Contains(*snap.RecoveryHint, "consecutive") {
+		t.Fatalf("RecoveryHint = %q, want substring \"consecutive\"", *snap.RecoveryHint)
+	}
+}
+
+func TestManagerRecoveryHintNilForNonGatewayError(t *testing.T) {
+	db := openTestDB(t)
+	manager := NewManager(db, Options{
+		PollInterval: 5 * time.Millisecond,
+		Threshold:    30 * time.Second,
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+			return &fakeFetcher{results: []fetchResult{{err: errors.New("generic network error")}}}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice", Token: "tok", Owner: "octo", Repo: "demo", PR: 1103,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	snap := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool { return s.Terminal })
+	if snap.RecoveryHint != nil {
+		t.Fatalf("RecoveryHint = %q, want nil for non-gateway error", *snap.RecoveryHint)
+	}
+}
+
 func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
 	// N-1 consecutive upstream failures followed by a success must NOT escalate
 	// to AUTH_EXPIRED. The watch should complete normally after the success.
