@@ -76,7 +76,7 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` or leave both unset. |
 | `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_URL`. |
 
-**Removed in v3.0.0**:`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
+**Removed in v3.0.0**: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
 
 ## Local Development
 
