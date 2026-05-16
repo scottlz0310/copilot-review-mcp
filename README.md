@@ -73,6 +73,8 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
 | `MCP_SESSION_TIMEOUT_MIN` | | `0` | Idle timeout for Streamable HTTP sessions (minutes). After this period without any HTTP request from a client, the session is closed and subsequent requests with the stale `Mcp-Session-Id` get `404 session not found`. The default `0` disables idle eviction so long-lived clients (Claude Code / IDE / `mcp-gateway`) do not hit the failure mode in #14. Trade-off: orphaned sessions (clients that disappear without sending `DELETE`) remain in memory until process shutdown — set a positive value (e.g. `1440` for 24h) if memory growth is a concern. |
+| `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` or leave both unset. |
+| `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_URL`. |
 
 **Removed in v3.0.0**: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
 

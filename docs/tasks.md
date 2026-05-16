@@ -1,5 +1,11 @@
 # copilot-review-mcp 改善タスク一覧
 
+> **Archived.** This document was written against the legacy `scottlz0310/Mcp-Docker` monorepo.
+> All issues referenced here (#55–#58 in Mcp-Docker, #63–#68 in Mcp-Docker) have since been
+> implemented in this repository as part of the async watch redesign.
+> The steps and recommendations below are preserved for historical context only and should
+> **not** be treated as pending work.
+
 未整理だったツール動作の調査を経て特定した改善ISSUEと、推奨消化順をまとめる。
 
 ## 長期 redesign
