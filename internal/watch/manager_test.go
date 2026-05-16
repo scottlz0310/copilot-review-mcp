@@ -349,14 +349,24 @@ func TestManagerGatewayAuthExpiredFailsWatch(t *testing.T) {
 }
 
 func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
+	// N-1 consecutive upstream failures followed by a success must NOT escalate
+	// to AUTH_EXPIRED. The watch should complete normally after the success.
+	const threshold = 3
+	reviewTime := time.Now().Add(time.Minute)
 	db := openTestDB(t)
 	manager := NewManager(db, Options{
-		PollInterval: 5 * time.Millisecond,
-		Threshold:    30 * time.Second,
+		PollInterval:             5 * time.Millisecond,
+		Threshold:                30 * time.Second,
+		UpstreamFailureThreshold: threshold,
 		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
 					{err: ghclient.ErrGatewayUpstreamFailure},
+					{err: ghclient.ErrGatewayUpstreamFailure},
+					{data: &ghclient.ReviewData{
+						LatestCopilotReview: newReview("APPROVED", &reviewTime),
+						RateLimitRemaining:  100,
+					}},
 				},
 			}
 		},
@@ -377,12 +387,106 @@ func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
 	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
 		return s.Terminal
 	})
+	if snapshot.WatchStatus == StatusFailed && snapshot.FailureReason != nil && *snapshot.FailureReason == FailureReasonAuthExpired {
+		t.Fatalf("WatchStatus = %q FailureReason = %q: below-threshold upstream failures must not escalate to AUTH_EXPIRED",
+			snapshot.WatchStatus, *snapshot.FailureReason)
+	}
+}
+
+func TestManagerGatewayUpstreamFailureEscalatesAfterThreshold(t *testing.T) {
+	// Exactly <threshold> consecutive ErrGatewayUpstreamFailure errors must
+	// escalate the watch to FAILED/AUTH_EXPIRED.
+	const threshold = 3
+	db := openTestDB(t)
+	manager := NewManager(db, Options{
+		PollInterval:             5 * time.Millisecond,
+		Threshold:                30 * time.Second,
+		UpstreamFailureThreshold: threshold,
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+			return &fakeFetcher{
+				results: []fetchResult{
+					{err: ghclient.ErrGatewayUpstreamFailure},
+				},
+			}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice",
+		Token: "some-token",
+		Owner: "octo",
+		Repo:  "demo",
+		PR:    902,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
+		return s.Terminal
+	})
 	if snapshot.WatchStatus != StatusFailed {
 		t.Fatalf("WatchStatus = %q, want %q", snapshot.WatchStatus, StatusFailed)
 	}
-	if snapshot.FailureReason == nil || *snapshot.FailureReason != FailureReasonGitHubError {
-		t.Fatalf("FailureReason = %v, want %q (ErrGatewayUpstreamFailure must not become AUTH_EXPIRED)",
-			snapshot.FailureReason, FailureReasonGitHubError)
+	if snapshot.FailureReason == nil || *snapshot.FailureReason != FailureReasonAuthExpired {
+		t.Fatalf("FailureReason = %v, want %q after %d consecutive upstream failures",
+			snapshot.FailureReason, FailureReasonAuthExpired, threshold)
+	}
+	if snapshot.LastError == nil || !strings.Contains(*snapshot.LastError, "consecutive failures") {
+		t.Fatalf("LastError = %v, want message containing \"consecutive failures\"", snapshot.LastError)
+	}
+}
+
+func TestManagerGatewayUpstreamFailureCounterResetsOnSuccess(t *testing.T) {
+	// N-1 upstream failures followed by a success must reset the counter so that
+	// a subsequent run of N-1 failures does not trigger escalation.
+	const threshold = 3
+	reviewTime := time.Now().Add(time.Minute)
+	db := openTestDB(t)
+	manager := NewManager(db, Options{
+		PollInterval:             5 * time.Millisecond,
+		Threshold:                30 * time.Second,
+		UpstreamFailureThreshold: threshold,
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+			return &fakeFetcher{
+				results: []fetchResult{
+					// Two failures (count → 2, below threshold=3)
+					{err: ghclient.ErrGatewayUpstreamFailure},
+					{err: ghclient.ErrGatewayUpstreamFailure},
+					// Success resets counter to 0; review not yet complete
+					{data: &ghclient.ReviewData{IsCopilotInReviewers: true, RateLimitRemaining: 100}},
+					// Two more failures (count → 2 again, still below threshold)
+					{err: ghclient.ErrGatewayUpstreamFailure},
+					{err: ghclient.ErrGatewayUpstreamFailure},
+					// Final success with completed review → COMPLETED
+					{data: &ghclient.ReviewData{
+						LatestCopilotReview: newReview("APPROVED", &reviewTime),
+						RateLimitRemaining:  100,
+					}},
+				},
+			}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice",
+		Token: "some-token",
+		Owner: "octo",
+		Repo:  "demo",
+		PR:    903,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
+		return s.Terminal
+	})
+	if snapshot.WatchStatus == StatusFailed && snapshot.FailureReason != nil && *snapshot.FailureReason == FailureReasonAuthExpired {
+		t.Fatalf("WatchStatus = %q FailureReason = %q: counter should have been reset by intermediate success",
+			snapshot.WatchStatus, *snapshot.FailureReason)
 	}
 }
 

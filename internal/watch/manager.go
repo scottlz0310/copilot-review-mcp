@@ -22,6 +22,7 @@ var ErrManagerClosed = errors.New("watch manager is closed")
 const defaultPollInterval = 90 * time.Second
 const defaultPollTimeout = 30 * time.Second
 const defaultMaxWatchDuration = 2 * time.Hour
+const defaultUpstreamFailureThreshold = 5
 
 // Status is the lifecycle state of a background review watch.
 type Status string
@@ -97,6 +98,9 @@ type Options struct {
 	// (e.g. "copilot-review://watch/{id}"). It is safe to call srv.ResourceUpdated
 	// from this callback.
 	NotifyResourceUpdated func(uri string)
+	// UpstreamFailureThreshold is the number of consecutive ErrGatewayUpstreamFailure
+	// errors before the watch is escalated to FailureReasonAuthExpired. Defaults to 5.
+	UpstreamFailureThreshold int
 }
 
 // CancelResult reports the outcome of a manual watch cancellation request.
@@ -126,22 +130,23 @@ type watchStore interface {
 
 // Manager owns background review-watch workers for the current server process.
 type Manager struct {
-	db                    watchStore
-	threshold             time.Duration
-	pollInterval          time.Duration
-	pollTimeout           time.Duration
-	maxWatchDuration      time.Duration
-	notifyResourceUpdated func(uri string)
-	clientFactory         func(ctx context.Context, token, login string) ReviewDataFetcher
-	now                   func() time.Time
-	ctx                   context.Context
-	cancel                context.CancelFunc
-	idSeq                 atomic.Uint64
-	mu                    sync.RWMutex
-	watchesByID           map[string]*watchState
-	activeByKey           map[watchKey]string
-	latestByKey           map[watchKey]string
-	closed                bool
+	db                       watchStore
+	threshold                time.Duration
+	pollInterval             time.Duration
+	pollTimeout              time.Duration
+	maxWatchDuration         time.Duration
+	upstreamFailureThreshold int
+	notifyResourceUpdated    func(uri string)
+	clientFactory            func(ctx context.Context, token, login string) ReviewDataFetcher
+	now                      func() time.Time
+	ctx                      context.Context
+	cancel                   context.CancelFunc
+	idSeq                    atomic.Uint64
+	mu                       sync.RWMutex
+	watchesByID              map[string]*watchState
+	activeByKey              map[watchKey]string
+	latestByKey              map[watchKey]string
+	closed                   bool
 }
 
 type watchKey struct {
@@ -152,28 +157,29 @@ type watchKey struct {
 }
 
 type watchState struct {
-	id               string
-	key              watchKey
-	triggerLogID     *int64
-	resourceURI      *string
-	token            string
-	ctx              context.Context
-	cancel           context.CancelFunc
-	clientMu         sync.RWMutex
-	client           ReviewDataFetcher
-	status           Status
-	reviewStatus     *ghclient.ReviewStatus
-	failureReason    *FailureReason
-	terminal         bool
-	workerRunning    bool
-	pollsDone        int
-	startedAt        time.Time
-	updatedAt        time.Time
-	completedAt      *time.Time
-	staleAt          *time.Time
-	lastPolledAt     *time.Time
-	lastError        *string
-	rateLimitResetAt *time.Time
+	id                   string
+	key                  watchKey
+	triggerLogID         *int64
+	resourceURI          *string
+	token                string
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	clientMu             sync.RWMutex
+	client               ReviewDataFetcher
+	status               Status
+	reviewStatus         *ghclient.ReviewStatus
+	failureReason        *FailureReason
+	terminal             bool
+	workerRunning        bool
+	pollsDone            int
+	startedAt            time.Time
+	updatedAt            time.Time
+	completedAt          *time.Time
+	staleAt              *time.Time
+	lastPolledAt         *time.Time
+	lastError            *string
+	rateLimitResetAt     *time.Time
+	upstreamFailureCount int
 }
 
 // NewManager creates a process-local, memory-only watch manager.
@@ -190,6 +196,10 @@ func NewManager(db watchStore, opts Options) *Manager {
 	if maxWatchDuration <= 0 {
 		maxWatchDuration = defaultMaxWatchDuration
 	}
+	upstreamFailureThreshold := opts.UpstreamFailureThreshold
+	if upstreamFailureThreshold <= 0 {
+		upstreamFailureThreshold = defaultUpstreamFailureThreshold
+	}
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -202,19 +212,20 @@ func NewManager(db watchStore, opts Options) *Manager {
 		}
 	}
 	return &Manager{
-		db:                    db,
-		threshold:             opts.Threshold,
-		pollInterval:          pollInterval,
-		pollTimeout:           pollTimeout,
-		maxWatchDuration:      maxWatchDuration,
-		notifyResourceUpdated: opts.NotifyResourceUpdated,
-		clientFactory:         clientFactory,
-		now:                   now,
-		ctx:                   ctx,
-		cancel:                cancel,
-		watchesByID:           make(map[string]*watchState),
-		activeByKey:           make(map[watchKey]string),
-		latestByKey:           make(map[watchKey]string),
+		db:                       db,
+		threshold:                opts.Threshold,
+		pollInterval:             pollInterval,
+		pollTimeout:              pollTimeout,
+		maxWatchDuration:         maxWatchDuration,
+		upstreamFailureThreshold: upstreamFailureThreshold,
+		notifyResourceUpdated:    opts.NotifyResourceUpdated,
+		clientFactory:            clientFactory,
+		now:                      now,
+		ctx:                      ctx,
+		cancel:                   cancel,
+		watchesByID:              make(map[string]*watchState),
+		activeByKey:              make(map[watchKey]string),
+		latestByKey:              make(map[watchKey]string),
 	}
 }
 
@@ -679,6 +690,9 @@ func (m *Manager) pollOnce(watchID string) bool {
 			m.finishStatusWithPoll(w.id, now, StatusRateLimited, nil, err.Error())
 			return true
 		}
+		if errors.Is(err, ghclient.ErrGatewayUpstreamFailure) {
+			return m.handleUpstreamFailure(w.id, now, err.Error())
+		}
 		reason := FailureReasonGitHubError
 		if ghclient.IsAuthError(err) || ghclient.IsGatewayAuthError(err) {
 			reason = FailureReasonAuthExpired
@@ -762,6 +776,7 @@ func (m *Manager) pollOnce(watchID string) bool {
 	m.markPollLocked(current, now)
 	current.reviewStatus = reviewStatusPtr(reviewStatus)
 	current.lastError = nil
+	current.upstreamFailureCount = 0
 	current.rateLimitResetAt = nil
 	if current.triggerLogID == nil && entry != nil {
 		id := entry.ID
@@ -809,6 +824,46 @@ func (m *Manager) finishStatusWithPoll(watchID string, now time.Time, status Sta
 
 func (m *Manager) finishStatusWithoutPoll(watchID string, now time.Time, status Status, reason *FailureReason, errText string) {
 	m.finishState(watchID, now, status, reason, errText, false)
+}
+
+// handleUpstreamFailure counts consecutive ErrGatewayUpstreamFailure errors and
+// escalates to FailureReasonAuthExpired once the configured threshold is reached.
+// Returns true when the poll loop should stop (terminal transition or persist failure),
+// false when the watch should keep running.
+func (m *Manager) handleUpstreamFailure(watchID string, now time.Time, errText string) bool {
+	m.mu.Lock()
+	w := m.watchesByID[watchID]
+	if w == nil || w.terminal {
+		m.mu.Unlock()
+		return true
+	}
+	w.upstreamFailureCount++
+	if w.upstreamFailureCount >= m.upstreamFailureThreshold {
+		count := w.upstreamFailureCount
+		msg := fmt.Sprintf("gateway upstream_failure persisted after %d consecutive failures; re-authenticate: %s", count, errText)
+		reason := FailureReasonAuthExpired
+		m.markPollLocked(w, now)
+		m.finishLocked(w, StatusFailed, &reason, now, msg)
+		m.mu.Unlock()
+		return true
+	}
+	// Below threshold: record the transient error and keep watching.
+	m.markPollLocked(w, now)
+	errCopy := errText
+	w.lastError = &errCopy
+	if err := m.persistOrDegradeLocked(w, StatusWatching, now); err != nil {
+		var notifyURI string
+		if m.notifyResourceUpdated != nil && w.resourceURI != nil {
+			notifyURI = *w.resourceURI
+		}
+		m.mu.Unlock()
+		if notifyURI != "" {
+			go m.notifyResourceUpdated(notifyURI)
+		}
+		return true
+	}
+	m.mu.Unlock()
+	return false
 }
 
 func (m *Manager) finishState(watchID string, now time.Time, status Status, reason *FailureReason, errText string, countedPoll bool) {
