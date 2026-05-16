@@ -387,9 +387,15 @@ func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
 	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
 		return s.Terminal
 	})
-	if snapshot.WatchStatus == StatusFailed && snapshot.FailureReason != nil && *snapshot.FailureReason == FailureReasonAuthExpired {
-		t.Fatalf("WatchStatus = %q FailureReason = %q: below-threshold upstream failures must not escalate to AUTH_EXPIRED",
-			snapshot.WatchStatus, *snapshot.FailureReason)
+	if snapshot.WatchStatus != StatusCompleted {
+		t.Fatalf("WatchStatus = %q, want %q: below-threshold upstream failures must not prevent completion",
+			snapshot.WatchStatus, StatusCompleted)
+	}
+	if snapshot.FailureReason != nil {
+		t.Fatalf("FailureReason = %q, want nil", *snapshot.FailureReason)
+	}
+	if snapshot.LastError != nil {
+		t.Fatalf("LastError = %q, want nil after successful completion", *snapshot.LastError)
 	}
 }
 
@@ -484,9 +490,15 @@ func TestManagerGatewayUpstreamFailureCounterResetsOnSuccess(t *testing.T) {
 	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
 		return s.Terminal
 	})
-	if snapshot.WatchStatus == StatusFailed && snapshot.FailureReason != nil && *snapshot.FailureReason == FailureReasonAuthExpired {
-		t.Fatalf("WatchStatus = %q FailureReason = %q: counter should have been reset by intermediate success",
-			snapshot.WatchStatus, *snapshot.FailureReason)
+	if snapshot.WatchStatus != StatusCompleted {
+		t.Fatalf("WatchStatus = %q, want %q: counter reset by intermediate success must allow final completion",
+			snapshot.WatchStatus, StatusCompleted)
+	}
+	if snapshot.FailureReason != nil {
+		t.Fatalf("FailureReason = %q, want nil", *snapshot.FailureReason)
+	}
+	if snapshot.LastError != nil {
+		t.Fatalf("LastError = %q, want nil after successful completion", *snapshot.LastError)
 	}
 }
 
