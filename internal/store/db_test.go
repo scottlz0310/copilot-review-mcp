@@ -455,3 +455,97 @@ func openTestDB(t *testing.T, path string) *DB {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestUpsertReviewWatchRoundTripsRecoveryHint(t *testing.T) {
+	db := openTestDB(t, filepath.Join(t.TempDir(), "review-watch-recovery-hint.db"))
+
+	hint := "Re-authenticate: the gateway has no cached token for this user."
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	entry := ReviewWatchEntry{
+		ID:            "cw_hint",
+		GitHubLogin:   "alice",
+		Owner:         "octo",
+		Repo:          "demo",
+		PR:            55,
+		WatchStatus:   "FAILED",
+		FailureReason: strPtr("AUTH_EXPIRED"),
+		IsActive:      false,
+		StartedAt:     startedAt,
+		UpdatedAt:     startedAt,
+		RecoveryHint:  strPtr(hint),
+	}
+	if err := db.UpsertReviewWatch(entry); err != nil {
+		t.Fatalf("UpsertReviewWatch() error = %v", err)
+	}
+
+	// GetReviewWatchByID must reconstruct RecoveryHint.
+	got, err := db.GetReviewWatchByID(entry.ID)
+	if err != nil {
+		t.Fatalf("GetReviewWatchByID() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetReviewWatchByID() = nil, want entry")
+	}
+	if got.RecoveryHint == nil {
+		t.Fatal("RecoveryHint = nil after round-trip, want non-nil")
+	}
+	if *got.RecoveryHint != hint {
+		t.Fatalf("RecoveryHint = %q, want %q", *got.RecoveryHint, hint)
+	}
+
+	// GetLatestReviewWatch must also return RecoveryHint.
+	latest, err := db.GetLatestReviewWatch("alice", "octo", "demo", 55)
+	if err != nil {
+		t.Fatalf("GetLatestReviewWatch() error = %v", err)
+	}
+	if latest == nil {
+		t.Fatal("GetLatestReviewWatch() = nil, want entry")
+	}
+	if latest.RecoveryHint == nil || *latest.RecoveryHint != hint {
+		t.Fatalf("GetLatestReviewWatch().RecoveryHint = %v, want %q", latest.RecoveryHint, hint)
+	}
+
+	// ListReviewWatches must also return RecoveryHint.
+	list, err := db.ListReviewWatches(ReviewWatchFilter{GitHubLogin: "alice", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListReviewWatches() error = %v", err)
+	}
+	if len(list) == 0 {
+		t.Fatal("ListReviewWatches() = empty, want entry")
+	}
+	if list[0].RecoveryHint == nil || *list[0].RecoveryHint != hint {
+		t.Fatalf("ListReviewWatches()[0].RecoveryHint = %v, want %q", list[0].RecoveryHint, hint)
+	}
+}
+
+func TestUpsertReviewWatchNilRecoveryHintRoundTrips(t *testing.T) {
+	db := openTestDB(t, filepath.Join(t.TempDir(), "review-watch-nil-hint.db"))
+
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	entry := ReviewWatchEntry{
+		ID:          "cw_no_hint",
+		GitHubLogin: "alice",
+		Owner:       "octo",
+		Repo:        "demo",
+		PR:          56,
+		WatchStatus: "FAILED",
+		IsActive:    false,
+		StartedAt:   startedAt,
+		UpdatedAt:   startedAt,
+		// RecoveryHint intentionally nil
+	}
+	if err := db.UpsertReviewWatch(entry); err != nil {
+		t.Fatalf("UpsertReviewWatch() error = %v", err)
+	}
+
+	got, err := db.GetReviewWatchByID(entry.ID)
+	if err != nil {
+		t.Fatalf("GetReviewWatchByID() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetReviewWatchByID() = nil, want entry")
+	}
+	if got.RecoveryHint != nil {
+		t.Fatalf("RecoveryHint = %q, want nil", *got.RecoveryHint)
+	}
+}
