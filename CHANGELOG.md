@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase B delegated background access — gateway integration tests (PR-C)** for [Issue #40](https://github.com/scottlz0310/copilot-review-mcp/issues/40) (part of [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29)):
+  - `internal/watch/gateway_integration_test.go` exercises the full chain `gatewayTokenSource → oauth2.ReuseTokenSource → oauth2.Transport → *ghclient.Client → watch.Manager.pollOnce` end-to-end using a fake `POST /internal/v1/whoami` server and a minimal fake GitHub REST surface, mirroring the production wiring in `cmd/server/main.go`'s `buildGatewayClientFactory`.
+  - Covers six scenarios: happy path (200 → `COMPLETED`), subject gone (404 → `FAILED`/`AUTH_EXPIRED` with re-seed hint), rotation failed (502/rotation_failed → `FAILED`/`AUTH_EXPIRED` with refresh-rejected hint), single upstream failure stays `WATCHING`, consecutive upstream failures escalate to `FAILED`/`AUTH_EXPIRED` with the consecutive-polls hint, and token rotation visible to GitHub (`oauth2.ReuseTokenSource` re-fetches a rotated token across polls).
+  - Distinct from existing `manager_test.go` cases that feed sentinel errors directly through `fakeFetcher`; these tests fail closed if the real gateway-backed wiring regresses (e.g., factory refactor breaks the chain).
 - **Phase B delegated background access — client core (PR-A)** for [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
   - `internal/github/gateway_token_source.go` — `gatewayTokenSource` implements `oauth2.TokenSource` against the gateway's `POST /internal/v1/whoami` endpoint. Validates loopback host (`127.0.0.1` / `::1` / `localhost`) at construction; parses `expires_at` into `oauth2.Token.Expiry` so `oauth2.ReuseTokenSource` only re-resolves near expiry.
   - Sentinel errors `ErrGatewaySubjectGone` (404), `ErrGatewayUnauthorized` (401), `ErrGatewayLoopbackRequired` (403), `ErrGatewayUpstreamFailure` (502), `ErrGatewayBadRequest` (other 4xx), `ErrGatewayNonLoopback`. Mapping to `FailureReasonAuthExpired` / recovery hints is deferred to PR-B.
