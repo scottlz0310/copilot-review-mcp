@@ -216,19 +216,25 @@ func TestGatewayTokenSource_ErrorMappings(t *testing.T) {
 	cases := []struct {
 		name   string
 		status int
+		body   any
 		want   error
 	}{
-		{"401", http.StatusUnauthorized, ErrGatewayUnauthorized},
-		{"403", http.StatusForbidden, ErrGatewayLoopbackRequired},
-		{"404", http.StatusNotFound, ErrGatewaySubjectGone},
-		{"502", http.StatusBadGateway, ErrGatewayUpstreamFailure},
-		{"400", http.StatusBadRequest, ErrGatewayBadRequest},
+		{"401", http.StatusUnauthorized, map[string]string{"code": "x"}, ErrGatewayUnauthorized},
+		{"403", http.StatusForbidden, map[string]string{"code": "x"}, ErrGatewayLoopbackRequired},
+		{"404", http.StatusNotFound, map[string]string{"code": "x"}, ErrGatewaySubjectGone},
+		// 502 body parse: rotation_failed → ErrGatewayRotationFailed (#33)
+		{"502/rotation_failed", http.StatusBadGateway, map[string]string{"error": "rotation_failed"}, ErrGatewayRotationFailed},
+		// 502 body parse: upstream_failure → ErrGatewayUpstreamFailure (#33)
+		{"502/upstream_failure", http.StatusBadGateway, map[string]string{"error": "upstream_failure"}, ErrGatewayUpstreamFailure},
+		// 502 with unknown / non-JSON body → fallback to ErrGatewayUpstreamFailure
+		{"502/unknown_body", http.StatusBadGateway, map[string]string{"code": "x"}, ErrGatewayUpstreamFailure},
+		{"400", http.StatusBadRequest, map[string]string{"code": "x"}, ErrGatewayBadRequest},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			srv := fakeWhoamiServer(t, "s", "alice", tc.status, map[string]string{"code": "x"})
+			srv := fakeWhoamiServer(t, "s", "alice", tc.status, tc.body)
 			t.Cleanup(srv.Close)
 			ts, err := NewGatewayTokenSource(GatewayTokenSourceConfig{
 				EndpointURL: srv.URL + "/internal/v1/whoami",
@@ -381,7 +387,8 @@ func TestGatewayTokenSource_HTTPClientTimeout(t *testing.T) {
 	// a url.Error whose underlying err satisfies net.Error.Timeout(); the
 	// context deadline path satisfies errors.Is(err, context.DeadlineExceeded).
 	var nerr net.Error
-	if !(errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout())) {
+	isTimeout := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout())
+	if !isTimeout {
 		t.Fatalf("expected timeout error (context.DeadlineExceeded or net.Error.Timeout()=true), got %v", err)
 	}
 }

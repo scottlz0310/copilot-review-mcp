@@ -32,9 +32,9 @@ func newGitHubAPIMock(t *testing.T, submittedAt time.Time) *httptest.Server {
 		w.Header().Set("X-RateLimit-Remaining", "1000")
 		switch {
 		case strings.Contains(r.URL.Path, "/requested_reviewers") && r.Method == http.MethodGet:
-			fmt.Fprint(w, `{"users":[],"teams":[]}`)
+			_, _ = fmt.Fprint(w, `{"users":[],"teams":[]}`)
 		case strings.Contains(r.URL.Path, "/reviews") && r.Method == http.MethodGet:
-			fmt.Fprintf(w, `[{"id":1,"user":{"login":"copilot-pull-request-reviewer[bot]"},"state":"APPROVED","submitted_at":%q}]`,
+			_, _ = fmt.Fprintf(w, `[{"id":1,"user":{"login":"copilot-pull-request-reviewer[bot]"},"state":"APPROVED","submitted_at":%q}]`,
 				submittedAt.UTC().Format(time.RFC3339))
 		default:
 			// GraphQL: distinguish node-ID query from requestReviewsByLogin mutation by
@@ -43,9 +43,9 @@ func newGitHubAPIMock(t *testing.T, submittedAt time.Time) *httptest.Server {
 			// The mutation body always contains "requestReviewsByLogin" as the operation.
 			body, _ := io.ReadAll(r.Body)
 			if strings.Contains(string(body), "requestReviewsByLogin") {
-				fmt.Fprint(w, `{"data":{"requestReviewsByLogin":{"clientMutationId":""}}}`)
+				_, _ = fmt.Fprint(w, `{"data":{"requestReviewsByLogin":{"clientMutationId":""}}}`)
 			} else {
-				fmt.Fprint(w, `{"data":{"repository":{"pullRequest":{"id":"PR_test123"}}}}`)
+				_, _ = fmt.Fprint(w, `{"data":{"repository":{"pullRequest":{"id":"PR_test123"}}}}`)
 			}
 		}
 	}))

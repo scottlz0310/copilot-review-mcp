@@ -356,14 +356,14 @@ func TestWatchResourceHandlerScopesWatchIDByLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("srv.Connect() error = %v", err)
 	}
-	defer ss.Wait()
+	defer func() { _ = ss.Wait() }()
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil)
 	cs, err := client.Connect(context.Background(), ct, nil)
 	if err != nil {
 		t.Fatalf("client.Connect() error = %v", err)
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 
 	// Bob should not be able to read Alice's watch resource.
 	_, err = cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: uri})
@@ -422,14 +422,14 @@ func TestWatchResourceHandlerReturnsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("srv.Connect() error = %v", err)
 	}
-	defer ss.Wait()
+	defer func() { _ = ss.Wait() }()
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil)
 	cs, err := client.Connect(context.Background(), ct, nil)
 	if err != nil {
 		t.Fatalf("client.Connect() error = %v", err)
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 
 	// Alice reads her own watch resource.
 	result, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: uri})

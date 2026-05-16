@@ -70,11 +70,11 @@ func Open(path string) (*DB, error) {
 	db.SetMaxIdleConns(1)
 	// Enable WAL mode for better concurrent access.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	// Migration: add prev_review_id column for ID-based review staleness detection.
@@ -83,7 +83,7 @@ func Open(path string) (*DB, error) {
 	var colExists bool
 	rows, err := db.Query(`PRAGMA table_info(trigger_log)`)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migration check table_info: %w", err)
 	}
 	for rows.Next() {
@@ -92,8 +92,8 @@ func Open(path string) (*DB, error) {
 		var notNull, pk int
 		var dfltValue interface{}
 		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			rows.Close()
-			db.Close()
+			_ = rows.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("migration scan table_info: %w", err)
 		}
 		if name == "prev_review_id" {
@@ -102,27 +102,27 @@ func Open(path string) (*DB, error) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
-		db.Close()
+		_ = rows.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migration iterate table_info: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migration close table_info rows: %w", err)
 	}
 	if !colExists {
 		if _, err := db.Exec(`ALTER TABLE trigger_log ADD COLUMN prev_review_id TEXT`); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("migration add prev_review_id: %w", err)
 		}
 	}
 	if _, err := db.Exec(reviewWatchLookupIndexSQL); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	d := &DB{db: db}
 	if _, err := d.MarkActiveReviewWatchesStale(staleOnOpenMessage); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return d, nil
@@ -378,7 +378,7 @@ func (d *DB) ListReviewWatches(filter ReviewWatchFilter) ([]ReviewWatchEntry, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []ReviewWatchEntry
 	for rows.Next() {
