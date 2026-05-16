@@ -52,6 +52,10 @@ func ClassifyGitHubError(err error) *autherr.AuthError {
 	case errors.Is(err, ErrGatewayBadRequest):
 		// Request arguments rejected by the gateway; caller should not retry.
 		return autherr.NewValidationError()
+	case errors.Is(err, ErrGatewayInvalidExpiry):
+		// Gateway whoami response was missing or contained an unparseable expires_at.
+		// This is a transient gateway response format error; retry may succeed.
+		return autherr.NewTransientUpstreamError()
 	}
 
 	// Primary rate limit (go-github wraps 403 + X-RateLimit-Remaining: 0).
