@@ -84,11 +84,21 @@ type StreamableHandler struct {
 // ensuring the session is registered before any bytes reach the client. This
 // closes the race where a client reads the Mcp-Session-Id from the response
 // and immediately sends a follow-up request before ServeHTTP returns.
+//
+// Unwrap allows http.ResponseController and other middleware to traverse the
+// wrapper chain and access optional interfaces (e.g., http.Hijacker, write
+// deadlines) on the original ResponseWriter.
 type sessionRecorder struct {
 	http.ResponseWriter
 	login   string
 	handler *StreamableHandler
 	once    sync.Once
+}
+
+// Unwrap returns the underlying http.ResponseWriter, enabling
+// http.ResponseController to reach optional interfaces on the original writer.
+func (sr *sessionRecorder) Unwrap() http.ResponseWriter {
+	return sr.ResponseWriter
 }
 
 // captureSession reads Mcp-Session-Id from the response headers and calls

@@ -373,6 +373,23 @@ func TestStreamableHandlerServeHTTPNonFlusherNotExposed(t *testing.T) {
 	}
 }
 
+// TestSessionRecorderUnwrap verifies that sessionRecorder.Unwrap returns the
+// underlying ResponseWriter, enabling http.ResponseController to traverse the
+// middleware chain and reach optional interfaces on the original writer.
+// sessionRecorderFlusher inherits the same path via embedding.
+func TestSessionRecorderUnwrap(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sr := &sessionRecorder{ResponseWriter: rec}
+	if got := sr.Unwrap(); got != rec {
+		t.Errorf("sessionRecorder.Unwrap() = %v, want underlying ResponseWriter", got)
+	}
+
+	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
+	if got := srf.Unwrap(); got != rec {
+		t.Errorf("sessionRecorderFlusher.Unwrap() = %v, want underlying ResponseWriter", got)
+	}
+}
+
 // post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
 // A fake inner handler sets Mcp-Session-Id in the response headers and returns
 // without calling Write, WriteHeader, or Flush — exercising the implicit-commit
