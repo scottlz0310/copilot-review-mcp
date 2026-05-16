@@ -343,31 +343,40 @@ func handlerServerSessionCount(handler *StreamableHandler) int {
 	return count
 }
 
-// TestSessionRecorderImplicitCommitFallbackRegistersSession verifies that a
-// session whose Mcp-Session-Id is set by the SDK handler but never sent through
-// an explicit Write, WriteHeader, or Flush call is still registered via the
-// post-ServeHTTP once.Do fallback.
-func TestSessionRecorderImplicitCommitFallbackRegistersSession(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
+// TestStreamableHandlerServeHTTPFallbackRegistersSession verifies the
+// post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
+// A fake inner handler sets Mcp-Session-Id in the response headers and returns
+// without calling Write, WriteHeader, or Flush — exercising the implicit-commit
+// path where net/http would commit the headers on handler return. The test
+// confirms that sessionLogins is populated despite no explicit commit call.
+func TestStreamableHandlerServeHTTPFallbackRegistersSession(t *testing.T) {
+	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Sets the session header but intentionally calls no write methods,
+		// simulating the implicit-commit path.
+		w.Header().Set(mcpSessionIDHeader, "implicit-sid")
+	})
+	h := &StreamableHandler{
+		handler:       fakeInner,
+		sessionLogins: make(map[string]string),
+	}
+	t.Cleanup(h.Close)
 
 	rec := httptest.NewRecorder()
-	rec.Header().Set(mcpSessionIDHeader, "implicit-session-id")
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyLogin, "alice")
+	req = req.WithContext(ctx)
 
-	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
-	// Simulate handler return without any explicit Write/WriteHeader/Flush.
-	sr.once.Do(sr.captureSession)
+	h.ServeHTTP(rec, req)
 
-	handler.mu.Lock()
-	login, registered := handler.sessionLogins["implicit-session-id"]
-	handler.mu.Unlock()
+	h.mu.Lock()
+	login, registered := h.sessionLogins["implicit-sid"]
+	h.mu.Unlock()
 
 	if !registered {
-		t.Fatal("implicit-commit fallback did not register session via rememberSession")
+		t.Fatal("post-ServeHTTP fallback did not register session for implicit-commit path")
 	}
 	if login != "alice" {
-		t.Fatalf("implicit-commit fallback registered login = %q, want alice", login)
+		t.Fatalf("registered login = %q, want alice", login)
 	}
 }
 
