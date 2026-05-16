@@ -94,6 +94,8 @@ review 反映メモ:
 
 ---
 
+> **Note (archived):** The issues below (#55–#58) were filed in the legacy `scottlz0310/Mcp-Docker` monorepo and have since been implemented in this repository as part of the async watch redesign (memory-only manager → SQLite persistence → tool surface → session/notification layer). The issue links point to the old repo and are kept here for historical reference only.
+
 ## ISSUE 一覧
 
 | ISSUE | 種別 | タイトル | 推奨順 |
