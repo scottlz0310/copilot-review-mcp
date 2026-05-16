@@ -342,6 +342,19 @@ func IsAuthError(err error) bool {
 	return strings.Contains(err.Error(), "401 Unauthorized")
 }
 
+// IsGatewayAuthError reports whether err is a gateway sentinel that requires
+// the user to re-authenticate. It returns true for:
+//   - ErrGatewaySubjectGone: the gateway has no cached token record for the
+//     subject; the user must issue a fresh client request to re-seed the cache.
+//   - ErrGatewayRotationFailed: the gateway tried to rotate the refresh token
+//     but GitHub explicitly rejected it; the user must re-authenticate.
+//
+// ErrGatewayUpstreamFailure is intentionally excluded: it is a transient
+// upstream failure that may resolve on retry and does not require user action.
+func IsGatewayAuthError(err error) bool {
+	return errors.Is(err, ErrGatewaySubjectGone) || errors.Is(err, ErrGatewayRotationFailed)
+}
+
 // prNodeIDQuery fetches the GraphQL node ID for a pull request.
 // Used by RequestCopilotReview to obtain the ID required by the mutation.
 type prNodeIDQuery struct {

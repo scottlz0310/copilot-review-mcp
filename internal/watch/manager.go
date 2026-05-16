@@ -680,7 +680,7 @@ func (m *Manager) pollOnce(watchID string) bool {
 			return true
 		}
 		reason := FailureReasonGitHubError
-		if ghclient.IsAuthError(err) {
+		if ghclient.IsAuthError(err) || ghclient.IsGatewayAuthError(err) {
 			reason = FailureReasonAuthExpired
 		}
 		m.finishFailureWithPoll(w.id, now, reason, err.Error())

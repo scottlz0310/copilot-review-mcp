@@ -298,6 +298,94 @@ func TestManagerAuthExpiredFailsWatch(t *testing.T) {
 	}
 }
 
+func TestManagerGatewayAuthExpiredFailsWatch(t *testing.T) {
+	sentinels := []struct {
+		name string
+		err  error
+	}{
+		{"ErrGatewaySubjectGone", ghclient.ErrGatewaySubjectGone},
+		{"ErrGatewayRotationFailed", ghclient.ErrGatewayRotationFailed},
+	}
+
+	for i, tc := range sentinels {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			db := openTestDB(t)
+			manager := NewManager(db, Options{
+				PollInterval: 5 * time.Millisecond,
+				Threshold:    30 * time.Second,
+				ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+					return &fakeFetcher{
+						results: []fetchResult{
+							{err: tc.err},
+						},
+					}
+				},
+			})
+			t.Cleanup(manager.Close)
+
+			started, _, err := manager.Start(StartInput{
+				Login: "alice",
+				Token: "some-token",
+				Owner: "octo",
+				Repo:  "demo",
+				PR:    900 + i,
+			})
+			if err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+
+			snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
+				return s.Terminal
+			})
+			if snapshot.WatchStatus != StatusFailed {
+				t.Fatalf("WatchStatus = %q, want %q", snapshot.WatchStatus, StatusFailed)
+			}
+			if snapshot.FailureReason == nil || *snapshot.FailureReason != FailureReasonAuthExpired {
+				t.Fatalf("FailureReason = %v, want %q", snapshot.FailureReason, FailureReasonAuthExpired)
+			}
+		})
+	}
+}
+
+func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
+	db := openTestDB(t)
+	manager := NewManager(db, Options{
+		PollInterval: 5 * time.Millisecond,
+		Threshold:    30 * time.Second,
+		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+			return &fakeFetcher{
+				results: []fetchResult{
+					{err: ghclient.ErrGatewayUpstreamFailure},
+				},
+			}
+		},
+	})
+	t.Cleanup(manager.Close)
+
+	started, _, err := manager.Start(StartInput{
+		Login: "alice",
+		Token: "some-token",
+		Owner: "octo",
+		Repo:  "demo",
+		PR:    901,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	snapshot := waitForWatch(t, manager, started.WatchID, func(s Snapshot) bool {
+		return s.Terminal
+	})
+	if snapshot.WatchStatus != StatusFailed {
+		t.Fatalf("WatchStatus = %q, want %q", snapshot.WatchStatus, StatusFailed)
+	}
+	if snapshot.FailureReason == nil || *snapshot.FailureReason != FailureReasonGitHubError {
+		t.Fatalf("FailureReason = %v, want %q (ErrGatewayUpstreamFailure must not become AUTH_EXPIRED)",
+			snapshot.FailureReason, FailureReasonGitHubError)
+	}
+}
+
 func TestManagerCloseMarksActiveWatchStale(t *testing.T) {
 	db := openTestDB(t)
 	manager := NewManager(db, Options{
