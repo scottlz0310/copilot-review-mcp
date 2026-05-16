@@ -343,7 +343,36 @@ func handlerServerSessionCount(handler *StreamableHandler) int {
 	return count
 }
 
-// TestStreamableHandlerServeHTTPFallbackRegistersSession verifies the
+
+// nonFlushingResponseWriter wraps http.ResponseWriter without forwarding
+// http.Flusher, so type-asserting for it always fails.
+type nonFlushingResponseWriter struct{ http.ResponseWriter }
+
+// TestStreamableHandlerServeHTTPNonFlusherNotExposed is a regression test for
+// the sessionRecorderFlusher optional-interface contract: when the underlying
+// ResponseWriter does not implement http.Flusher, the writer passed to the
+// inner handler must also not expose http.Flusher.
+func TestStreamableHandlerServeHTTPNonFlusherNotExposed(t *testing.T) {
+	var sawFlusher bool
+	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, sawFlusher = w.(http.Flusher)
+	})
+	h := &StreamableHandler{
+		handler:       fakeInner,
+		sessionLogins: make(map[string]string),
+	}
+	t.Cleanup(h.Close)
+
+	nfw := &nonFlushingResponseWriter{ResponseWriter: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+
+	h.ServeHTTP(nfw, req)
+
+	if sawFlusher {
+		t.Error("inner handler saw http.Flusher on a writer whose underlying ResponseWriter does not support it")
+	}
+}
+
 // post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
 // A fake inner handler sets Mcp-Session-Id in the response headers and returns
 // without calling Write, WriteHeader, or Flush — exercising the implicit-commit
