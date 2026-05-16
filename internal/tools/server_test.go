@@ -343,13 +343,41 @@ func handlerServerSessionCount(handler *StreamableHandler) int {
 	return count
 }
 
+// TestSessionRecorderImplicitCommitFallbackRegistersSession verifies that a
+// session whose Mcp-Session-Id is set by the SDK handler but never sent through
+// an explicit Write, WriteHeader, or Flush call is still registered via the
+// post-ServeHTTP once.Do fallback.
+func TestSessionRecorderImplicitCommitFallbackRegistersSession(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	rec := httptest.NewRecorder()
+	rec.Header().Set(mcpSessionIDHeader, "implicit-session-id")
+
+	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
+	// Simulate handler return without any explicit Write/WriteHeader/Flush.
+	sr.once.Do(sr.captureSession)
+
+	handler.mu.Lock()
+	login, registered := handler.sessionLogins["implicit-session-id"]
+	handler.mu.Unlock()
+
+	if !registered {
+		t.Fatal("implicit-commit fallback did not register session via rememberSession")
+	}
+	if login != "alice" {
+		t.Fatalf("implicit-commit fallback registered login = %q, want alice", login)
+	}
+}
+
 func handlerSessionLoginCount(handler *StreamableHandler) int {
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
 	return len(handler.sessionLogins)
 }
 
-// TestSessionRecorderFlushRegistersSession verifies that sessionRecorder.Flush
+// TestSessionRecorderFlushRegistersSessionverifies that sessionRecorder.Flush
 // calls rememberSession before forwarding to the underlying http.Flusher,
 // covering the race path where the SDK sets Mcp-Session-Id and flushes headers
 // without a prior Write or WriteHeader call.

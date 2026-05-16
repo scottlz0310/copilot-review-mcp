@@ -128,7 +128,12 @@ func (h *StreamableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.handler.ServeHTTP(&sessionRecorder{ResponseWriter: w, login: login, handler: h}, r)
+	sr := &sessionRecorder{ResponseWriter: w, login: login, handler: h}
+	h.handler.ServeHTTP(sr, r)
+	// Fallback for implicit header commits: net/http writes headers on handler
+	// return if the handler never called Write, WriteHeader, or Flush. The
+	// once.Do is a no-op when captureSession already ran inside ServeHTTP.
+	sr.once.Do(sr.captureSession)
 
 	if r.Method == http.MethodDelete && sessionID != "" {
 		h.forgetSession(sessionID)
