@@ -71,7 +71,7 @@ Call `{CRM}:start_copilot_review_watch` (returns immediately).
 Record:
 - `watch_id`
 - `resource_uri` (`copilot-review://watch/{watch_id}`)
-- `next_poll_seconds`
+- `next_poll_seconds` (only present when `recommended_next_action=POLL_AFTER`)
 
 If an active watch for the same PR already exists, it is reused.
 
