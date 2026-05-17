@@ -465,53 +465,104 @@ func TestGetCIStatus(t *testing.T) {
 	makeChecksJSON := func(runs ...string) string {
 		return fmt.Sprintf(`{"total_count":%d,"check_runs":[%s]}`, len(runs), join(runs, ","))
 	}
-	makeRun := func(status, conclusion string) string {
-		return fmt.Sprintf(`{"id":1,"status":%q,"conclusion":%q}`, status, conclusion)
+	// makeRun builds a check-run JSON fragment. appID is included in the dedup key
+	// (appID:name), so two runs with the same name but different appIDs are treated
+	// as distinct checks. Pass appID=0 to use the default sentinel app (ID 100).
+	makeRun := func(id, appID int64, name, status, conclusion string) string {
+		if appID == 0 {
+			appID = 100
+		}
+		return fmt.Sprintf(`{"id":%d,"name":%q,"status":%q,"conclusion":%q,"app":{"id":%d}}`,
+			id, name, status, conclusion, appID)
 	}
 
 	tests := []struct {
 		name       string
 		checksJSON string
-		want       bool
+		want       CIStatus
 	}{
 		{
 			name:       "zero check runs → true (CI not configured)",
 			checksJSON: makeChecksJSON(),
-			want:       true,
+			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "all success → true",
-			checksJSON: makeChecksJSON(makeRun("completed", "success")),
-			want:       true,
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/build", "completed", "success")),
+			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "skipped → true",
-			checksJSON: makeChecksJSON(makeRun("completed", "skipped")),
-			want:       true,
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/lint", "completed", "skipped")),
+			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "neutral → true",
-			checksJSON: makeChecksJSON(makeRun("completed", "neutral")),
-			want:       true,
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/optional", "completed", "neutral")),
+			want:       CIStatus{OK: true},
 		},
 		{
-			name:       "in_progress (not completed) → false",
-			checksJSON: makeChecksJSON(makeRun("in_progress", "")),
-			want:       false,
+			name:       "in_progress (not completed) → false with pending_checks",
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/test", "in_progress", "")),
+			want:       CIStatus{OK: false, PendingChecks: []string{"ci/test"}},
 		},
 		{
-			name:       "failure → false",
-			checksJSON: makeChecksJSON(makeRun("completed", "failure")),
-			want:       false,
+			name:       "failure → false with failed_checks",
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/build", "completed", "failure")),
+			want:       CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
 		},
 		{
-			name: "mixed success and failure → false",
+			name: "mixed success and failure → false with failed_checks",
 			checksJSON: makeChecksJSON(
-				makeRun("completed", "success"),
-				makeRun("completed", "failure"),
+				makeRun(1, 0, "ci/build", "completed", "success"),
+				makeRun(2, 0, "ci/test", "completed", "failure"),
 			),
-			want: false,
+			want: CIStatus{OK: false, FailedChecks: []string{"ci/test"}},
 		},
+		{
+			name: "same app, same name: latest (higher ID) wins; stale in_progress ignored",
+			checksJSON: makeChecksJSON(
+				makeRun(1, 0, "ci/build", "in_progress", ""),   // older: stale
+				makeRun(2, 0, "ci/build", "completed", "success"), // latest: success
+			),
+			want: CIStatus{OK: true},
+		},
+		{
+			name: "same app, same name: latest (higher ID) is failure",
+			checksJSON: makeChecksJSON(
+				makeRun(1, 0, "ci/build", "completed", "success"), // older
+				makeRun(2, 0, "ci/build", "completed", "failure"), // latest
+			),
+			want: CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
+		},
+		{
+			// Same check name but different apps: both must be retained as distinct checks.
+			// A passing run from app 200 must not hide a failing run from app 300.
+			name: "same name, different apps: both retained; failing check reported",
+			checksJSON: makeChecksJSON(
+				makeRun(1, 200, "ci/build", "completed", "success"), // app 200, passing
+				makeRun(2, 300, "ci/build", "completed", "failure"), // app 300, failing
+			),
+			want: CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
+		},
+	}
+
+	ciStatusEqual := func(a, b CIStatus) bool {
+		if a.OK != b.OK {
+			return false
+		}
+		sliceEq := func(x, y []string) bool {
+			if len(x) != len(y) {
+				return false
+			}
+			for i := range x {
+				if x[i] != y[i] {
+					return false
+				}
+			}
+			return true
+		}
+		return sliceEq(a.PendingChecks, b.PendingChecks) && sliceEq(a.FailedChecks, b.FailedChecks)
 	}
 
 	for _, tt := range tests {
@@ -533,8 +584,8 @@ func TestGetCIStatus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetCIStatus() error = %v", err)
 			}
-			if got != tt.want {
-				t.Errorf("GetCIStatus() = %v, want %v", got, tt.want)
+			if !ciStatusEqual(got, tt.want) {
+				t.Errorf("GetCIStatus() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -569,8 +620,8 @@ func TestGetCIStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetCIStatus() error = %v", err)
 		}
-		if got {
-			t.Fatalf("GetCIStatus() = %v, want false", got)
+		if got.OK {
+			t.Fatalf("GetCIStatus() = %+v, want OK=false", got)
 		}
 		if join(pagesSeen, ",") != "1,2" {
 			t.Fatalf("GetCIStatus() did not request all pages, got pages %q, want %q", join(pagesSeen, ","), "1,2")
@@ -607,8 +658,8 @@ func TestGetCIStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetCIStatus() error = %v", err)
 		}
-		if !got {
-			t.Fatalf("GetCIStatus() = %v, want true", got)
+		if !got.OK {
+			t.Fatalf("GetCIStatus() = %+v, want OK=true", got)
 		}
 		if join(pagesSeen, ",") != "1,2" {
 			t.Fatalf("GetCIStatus() did not request all pages, got pages %q, want %q", join(pagesSeen, ","), "1,2")

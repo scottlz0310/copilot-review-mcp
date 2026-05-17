@@ -54,9 +54,12 @@ type CycleStatusInput struct {
 
 // MergeConditions holds the per-condition merge readiness check.
 type MergeConditions struct {
-	CIOK            bool `json:"ci_ok"`
-	UnresolvedCount int  `json:"unresolved_count"`
-	AllReplied      bool `json:"all_replied"`
+	CIOK             bool     `json:"ci_ok"`
+	UnresolvedCount  int      `json:"unresolved_count"`
+	AllReplied       bool     `json:"all_replied"`
+	PendingChecks    []string `json:"pending_checks,omitempty"`    // check run names not yet completed
+	FailedChecks     []string `json:"failed_checks,omitempty"`     // check run names with non-passing conclusion
+	UnrepliedThreads []string `json:"unreplied_threads,omitempty"` // IDs of unresolved threads missing a reply
 }
 
 // CycleStatusOutput is the output schema for get_pr_review_cycle_status.
@@ -72,6 +75,32 @@ type CycleStatusOutput struct {
 }
 
 // ─── Tool 8: get_pr_review_cycle_status ──────────────────────────────────────
+
+// computeAllReplied checks whether all unresolved review threads have a reply
+// (i.e., comments from ≥2 distinct authors). Resolved threads are skipped
+// because they are already handled regardless of reply count.
+// Returns (allReplied, unrepliedThreadIDs).
+func computeAllReplied(threads []ghclient.ReviewThread) (bool, []string) {
+	allReplied := true
+	var unreplied []string
+	for _, t := range threads {
+		if t.IsResolved {
+			continue
+		}
+		uniqueAuthors := make(map[string]struct{})
+		for _, c := range t.Comments {
+			key := strings.TrimSpace(c.Author)
+			if key != "" {
+				uniqueAuthors[key] = struct{}{}
+			}
+		}
+		if len(uniqueAuthors) < 2 {
+			allReplied = false
+			unreplied = append(unreplied, t.ID)
+		}
+	}
+	return allReplied, unreplied
+}
 
 var cycleTool = &mcp.Tool{
 	Name: "get_pr_review_cycle_status",
@@ -138,7 +167,7 @@ func cycleStatusHandler(
 		}
 
 		// Auto-detect CI status early so all exit paths return accurate ci_ok.
-		ciAllSuccess, err := gh.GetCIStatus(ctx, in.Owner, in.Repo, in.PR)
+		ciStatus, err := gh.GetCIStatus(ctx, in.Owner, in.Repo, in.PR)
 		if err != nil {
 			if result, ok := tryAuthResult(err); ok {
 				return result, CycleStatusOutput{}, nil
@@ -148,6 +177,22 @@ func cycleStatusHandler(
 
 		// ── Early exit: max cycles exceeded ────────────────────────────────
 		if in.CyclesDone >= maxCycles {
+			// Fetch threads so all_replied / unresolved_count are accurate on this exit path.
+			rawThreads, err := gh.GetReviewThreads(ctx, in.Owner, in.Repo, in.PR)
+			if err != nil {
+				if result, ok := tryAuthResult(err); ok {
+					return result, CycleStatusOutput{}, nil
+				}
+				return nil, CycleStatusOutput{}, fmt.Errorf("failed to fetch review threads: %w", err)
+			}
+			unresolvedCount := 0
+			for _, t := range rawThreads {
+				if !t.IsResolved {
+					unresolvedCount++
+				}
+			}
+			allReplied, unrepliedThreads := computeAllReplied(rawThreads)
+
 			notes := []string{
 				fmt.Sprintf("■ 最大サイクル数 %d 回に達しました。", maxCycles),
 				fmt.Sprintf("■ PR: https://github.com/%s/%s/pull/%d", in.Owner, in.Repo, in.PR),
@@ -160,8 +205,15 @@ func cycleStatusHandler(
 				RereviewReason:    rereviewReason,
 				CyclesDone:        in.CyclesDone,
 				MaxCycles:         maxCycles,
-				MergeConditions:   MergeConditions{CIOK: ciAllSuccess},
-				Notes:             notes,
+				MergeConditions: MergeConditions{
+					CIOK:             ciStatus.OK,
+					UnresolvedCount:  unresolvedCount,
+					AllReplied:       allReplied,
+					PendingChecks:    ciStatus.PendingChecks,
+					FailedChecks:     ciStatus.FailedChecks,
+					UnrepliedThreads: unrepliedThreads,
+				},
+				Notes: notes,
 			}, nil
 		}
 
@@ -175,31 +227,20 @@ func cycleStatusHandler(
 		}
 
 		unresolvedCount := 0
-		allReplied := true // vacuously true when there are no threads
-
 		for _, t := range rawThreads {
 			if !t.IsResolved {
 				unresolvedCount++
 			}
-			// A thread is "replied" only when there are comments from
-			// at least two distinct authors (for example, Copilot and a user).
-			uniqueAuthors := make(map[string]struct{})
-			for _, c := range t.Comments {
-				authorKey := strings.TrimSpace(c.Author)
-				if authorKey == "" {
-					continue
-				}
-				uniqueAuthors[authorKey] = struct{}{}
-			}
-			if len(uniqueAuthors) < 2 {
-				allReplied = false
-			}
 		}
+		allReplied, unrepliedThreads := computeAllReplied(rawThreads)
 
 		mergeConditions := MergeConditions{
-			CIOK:            ciAllSuccess,
-			UnresolvedCount: unresolvedCount,
-			AllReplied:      allReplied,
+			CIOK:             ciStatus.OK,
+			UnresolvedCount:  unresolvedCount,
+			AllReplied:       allReplied,
+			PendingChecks:    ciStatus.PendingChecks,
+			FailedChecks:     ciStatus.FailedChecks,
+			UnrepliedThreads: unrepliedThreads,
 		}
 
 		// ── Fetch current review status ──────────────────────────────────────
@@ -250,9 +291,9 @@ func cycleStatusHandler(
 
 		// ── Termination condition checks (used for action and notes) ─────────
 		// Condition 1: unresolved=0 and CI=OK.
-		terminateCond1 := unresolvedCount == 0 && ciAllSuccess
+		terminateCond1 := unresolvedCount == 0 && ciStatus.OK
 		// Condition 2: no new Copilot comment for ≥ threshold minutes and CI=OK.
-		terminateCond2 := elapsedMinutes >= noCommentThreshold && ciAllSuccess
+		terminateCond2 := elapsedMinutes >= noCommentThreshold && ciStatus.OK
 
 		// ── Determine recommended_action ──────────────────────────────────────
 		var recommendedAction string
@@ -344,7 +385,7 @@ func cycleStatusHandler(
 				if unresolvedCount > 0 {
 					reasons = append(reasons, fmt.Sprintf("unresolved=%d残存", unresolvedCount))
 				}
-				if !ciAllSuccess {
+				if !ciStatus.OK {
 					reasons = append(reasons, "CI未達成")
 				}
 				if len(reasons) == 0 {
