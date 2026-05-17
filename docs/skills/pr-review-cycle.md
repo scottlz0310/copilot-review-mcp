@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: Waits for Copilot review completion via async watch polling (no external CLI required), then autonomously runs the PR review response cycle (fetch threads → classify & accept/reject → fix → reply → evaluate cycle → post summary). Invoke immediately after creating a PR or requesting a Copilot review. Does not merge autonomously.
+description: Waits for Copilot review completion via async watch polling (no mcp-resource-subscriber CLI required), then autonomously runs the PR review response cycle (fetch threads → classify & accept/reject → fix → reply → evaluate cycle → post summary). Invoke immediately after creating a PR or requesting a Copilot review. Does not merge autonomously.
 ---
 
 # pr-review-cycle Skill
@@ -9,7 +9,7 @@ description: Waits for Copilot review completion via async watch polling (no ext
 
 A skill that uses the `copilot-review` MCP server's watch tools to wait for Copilot review completion via **async watch polling**, then autonomously runs the PR review response cycle.
 
-This skill relies only on MCP tools — no external CLI or SDK wrapper is required. It is the fallback alternative to `pr-review-subscribe` for environments where `mcp-resource-subscriber` is unavailable.
+This skill relies only on MCP tools — no `mcp-resource-subscriber` or other subscription-based CLI is required. It is the polling-based alternative to `pr-review-subscribe` for environments where `mcp-resource-subscriber` is unavailable.
 
 > **About this file**
 > `docs/skills/pr-review-cycle.md` is a shared template for this repository.
@@ -77,7 +77,9 @@ If an active watch for the same PR already exists, it is reused.
 
 ### 1-B: Poll for Completion
 
-Wait `next_poll_seconds` from the response (minimum 1 second; server default is 90 seconds), then call `{CRM}:get_copilot_review_watch_status`.
+Check `recommended_next_action` from the `start_copilot_review_watch` response first. If it is already a terminal action (e.g., `READ_REVIEW_THREADS`), proceed immediately without polling.
+
+Otherwise, wait `next_poll_seconds` (minimum 1 second; server default is 90 seconds), then call `{CRM}:get_copilot_review_watch_status`. Repeat until a non-`POLL_AFTER` action is received.
 
 Follow `recommended_next_action`:
 
@@ -100,9 +102,14 @@ Follow `recommended_next_action`:
 
 Call `{CRM}:get_review_threads`.
 
-**Routing on 0 unresolved threads** (both cases → Phase 6.5):
+**Routing on 0 unresolved threads** (both cases → Phase 6.5 with the defaults below):
 - `cycles_done = 0` and unresolved = 0: Copilot found no issues on first review.
 - `cycles_done ≥ 1` and unresolved = 0: Re-review completed with no new issues; all previous fixes were approved.
+
+When skipping Phase 3–6 due to 0 threads, use these defaults for Phase 7/8:
+- `termination_status = READY_TO_MERGE`
+- `override_applied = no`
+- `final_cycle_fix_types`: blocking × 0, non-blocking × 0, suggestion × 0, trivial × 0
 
 Otherwise (unresolved > 0), proceed to Phase 3.
 
@@ -261,10 +268,10 @@ Post via `{GH}:add_issue_comment`:
 ### Accept/Reject Decisions
 - accept: N items
 - reject: M items
-  - #<thread>: (reason)
+  - Thread <threadId> (PRRT_xxx): (reason)
 
 ### Deferred / Scope-out Items
-- None | <list: #<number> — summary>
+- None | <list: Thread <threadId> (PRRT_xxx) — summary>
 
 ### Verification
 - CI: ...
@@ -279,7 +286,7 @@ Post via `{GH}:add_issue_comment`:
 
 - MUST list every reject with reason `out-of-scope` / `deferred` / `follow-up`, with the follow-up issue number.
 - `- None` is only allowed when no reject used those reasons AND no thread was left unresolved per Phase 5 step 4.
-- Untracked items: `Thread <id> — untracked — needs follow-up issue (Phase 5 step 4)`.
+- Untracked items: `Thread <threadId> (PRRT_xxx) — untracked — needs follow-up issue (Phase 5 step 4)`.
 - `Won't fix` rejects do NOT go in this section.
 
 ## Phase 8: Merge Decision
