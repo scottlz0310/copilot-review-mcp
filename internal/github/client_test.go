@@ -465,8 +465,15 @@ func TestGetCIStatus(t *testing.T) {
 	makeChecksJSON := func(runs ...string) string {
 		return fmt.Sprintf(`{"total_count":%d,"check_runs":[%s]}`, len(runs), join(runs, ","))
 	}
-	makeRun := func(id int64, name, status, conclusion string) string {
-		return fmt.Sprintf(`{"id":%d,"name":%q,"status":%q,"conclusion":%q}`, id, name, status, conclusion)
+	// makeRun builds a check-run JSON fragment. appID is included in the dedup key
+	// (appID:name), so two runs with the same name but different appIDs are treated
+	// as distinct checks. Pass appID=0 to use the default sentinel app (ID 100).
+	makeRun := func(id, appID int64, name, status, conclusion string) string {
+		if appID == 0 {
+			appID = 100
+		}
+		return fmt.Sprintf(`{"id":%d,"name":%q,"status":%q,"conclusion":%q,"app":{"id":%d}}`,
+			id, name, status, conclusion, appID)
 	}
 
 	tests := []struct {
@@ -481,50 +488,60 @@ func TestGetCIStatus(t *testing.T) {
 		},
 		{
 			name:       "all success → true",
-			checksJSON: makeChecksJSON(makeRun(1, "ci/build", "completed", "success")),
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/build", "completed", "success")),
 			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "skipped → true",
-			checksJSON: makeChecksJSON(makeRun(1, "ci/lint", "completed", "skipped")),
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/lint", "completed", "skipped")),
 			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "neutral → true",
-			checksJSON: makeChecksJSON(makeRun(1, "ci/optional", "completed", "neutral")),
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/optional", "completed", "neutral")),
 			want:       CIStatus{OK: true},
 		},
 		{
 			name:       "in_progress (not completed) → false with pending_checks",
-			checksJSON: makeChecksJSON(makeRun(1, "ci/test", "in_progress", "")),
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/test", "in_progress", "")),
 			want:       CIStatus{OK: false, PendingChecks: []string{"ci/test"}},
 		},
 		{
 			name:       "failure → false with failed_checks",
-			checksJSON: makeChecksJSON(makeRun(1, "ci/build", "completed", "failure")),
+			checksJSON: makeChecksJSON(makeRun(1, 0, "ci/build", "completed", "failure")),
 			want:       CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
 		},
 		{
 			name: "mixed success and failure → false with failed_checks",
 			checksJSON: makeChecksJSON(
-				makeRun(1, "ci/build", "completed", "success"),
-				makeRun(2, "ci/test", "completed", "failure"),
+				makeRun(1, 0, "ci/build", "completed", "success"),
+				makeRun(2, 0, "ci/test", "completed", "failure"),
 			),
 			want: CIStatus{OK: false, FailedChecks: []string{"ci/test"}},
 		},
 		{
-			name: "duplicate name: latest (higher ID) wins; stale in_progress ignored",
+			name: "same app, same name: latest (higher ID) wins; stale in_progress ignored",
 			checksJSON: makeChecksJSON(
-				makeRun(1, "ci/build", "in_progress", ""),  // older: stale
-				makeRun(2, "ci/build", "completed", "success"), // latest: success
+				makeRun(1, 0, "ci/build", "in_progress", ""),   // older: stale
+				makeRun(2, 0, "ci/build", "completed", "success"), // latest: success
 			),
 			want: CIStatus{OK: true},
 		},
 		{
-			name: "duplicate name: latest (higher ID) is failure",
+			name: "same app, same name: latest (higher ID) is failure",
 			checksJSON: makeChecksJSON(
-				makeRun(1, "ci/build", "completed", "success"), // older
-				makeRun(2, "ci/build", "completed", "failure"), // latest
+				makeRun(1, 0, "ci/build", "completed", "success"), // older
+				makeRun(2, 0, "ci/build", "completed", "failure"), // latest
+			),
+			want: CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
+		},
+		{
+			// Same check name but different apps: both must be retained as distinct checks.
+			// A passing run from app 200 must not hide a failing run from app 300.
+			name: "same name, different apps: both retained; failing check reported",
+			checksJSON: makeChecksJSON(
+				makeRun(1, 200, "ci/build", "completed", "success"), // app 200, passing
+				makeRun(2, 300, "ci/build", "completed", "failure"), // app 300, failing
 			),
 			want: CIStatus{OK: false, FailedChecks: []string{"ci/build"}},
 		},

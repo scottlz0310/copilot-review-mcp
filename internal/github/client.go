@@ -655,7 +655,8 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 		return CIStatus{}, fmt.Errorf("PR #%d head SHA is empty", prNumber)
 	}
 
-	// Collect all check runs, deduplicating by name (keep latest by ID).
+	// Collect all check runs, deduplicating by (appID, name) to collapse reruns of the
+	// same check while preserving distinct checks that share a name across different apps.
 	latest := make(map[string]*github.CheckRun)
 	opts := &github.ListCheckRunsOptions{ListOptions: github.ListOptions{PerPage: 100}}
 	for {
@@ -665,9 +666,9 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 		}
 		for i := range result.CheckRuns {
 			r := result.CheckRuns[i]
-			name := r.GetName()
-			if existing, ok := latest[name]; !ok || r.GetID() > existing.GetID() {
-				latest[name] = r
+			key := strconv.FormatInt(r.GetApp().GetID(), 10) + ":" + r.GetName()
+			if existing, ok := latest[key]; !ok || r.GetID() > existing.GetID() {
+				latest[key] = r
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -677,7 +678,8 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 	}
 
 	var pending, failed []string
-	for name, r := range latest {
+	for _, r := range latest {
+		name := r.GetName()
 		if r.GetStatus() != "completed" {
 			pending = append(pending, name)
 			continue

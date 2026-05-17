@@ -177,6 +177,22 @@ func cycleStatusHandler(
 
 		// ── Early exit: max cycles exceeded ────────────────────────────────
 		if in.CyclesDone >= maxCycles {
+			// Fetch threads so all_replied / unresolved_count are accurate on this exit path.
+			rawThreads, err := gh.GetReviewThreads(ctx, in.Owner, in.Repo, in.PR)
+			if err != nil {
+				if result, ok := tryAuthResult(err); ok {
+					return result, CycleStatusOutput{}, nil
+				}
+				return nil, CycleStatusOutput{}, fmt.Errorf("failed to fetch review threads: %w", err)
+			}
+			unresolvedCount := 0
+			for _, t := range rawThreads {
+				if !t.IsResolved {
+					unresolvedCount++
+				}
+			}
+			allReplied, unrepliedThreads := computeAllReplied(rawThreads)
+
 			notes := []string{
 				fmt.Sprintf("■ 最大サイクル数 %d 回に達しました。", maxCycles),
 				fmt.Sprintf("■ PR: https://github.com/%s/%s/pull/%d", in.Owner, in.Repo, in.PR),
@@ -190,9 +206,12 @@ func cycleStatusHandler(
 				CyclesDone:        in.CyclesDone,
 				MaxCycles:         maxCycles,
 				MergeConditions: MergeConditions{
-					CIOK:          ciStatus.OK,
-					PendingChecks: ciStatus.PendingChecks,
-					FailedChecks:  ciStatus.FailedChecks,
+					CIOK:             ciStatus.OK,
+					UnresolvedCount:  unresolvedCount,
+					AllReplied:       allReplied,
+					PendingChecks:    ciStatus.PendingChecks,
+					FailedChecks:     ciStatus.FailedChecks,
+					UnrepliedThreads: unrepliedThreads,
 				},
 				Notes: notes,
 			}, nil
