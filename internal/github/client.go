@@ -643,8 +643,9 @@ type CIStatus struct {
 }
 
 // GetCIStatus returns a CIStatus for the PR's head commit. Check runs are
-// deduplicated by name, keeping the latest (highest ID) run per name to avoid
-// stale in-progress runs from workflow re-triggers blocking ci_ok.
+// deduplicated by (appID, name), keeping the latest (highest ID) run per
+// (app, name) pair. This collapses reruns of the same check while preserving
+// distinct checks that happen to share a name across different GitHub Apps.
 func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber int) (CIStatus, error) {
 	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
 	if err != nil {
