@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -629,33 +630,44 @@ func (c *Client) ReplyToThread(ctx context.Context, threadID, body string) (Repl
 	}, nil
 }
 
-// GetCIStatus returns true when all GitHub Check Runs for the PR's head commit have
-// passed (conclusion: success, skipped, or neutral). Returns true when no check runs exist.
-// Returns false when any run is not yet completed or has a failing conclusion.
-func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber int) (bool, error) {
+// CIStatus holds the result of a CI check run status query.
+type CIStatus struct {
+	// OK is true when all check runs are completed with a passing conclusion
+	// (success, skipped, or neutral). Also true when no check runs exist.
+	OK bool
+	// PendingChecks contains the names of check runs not yet in "completed" status.
+	PendingChecks []string
+	// FailedChecks contains the names of check runs that completed with a
+	// non-passing conclusion (e.g., failure, cancelled, timed_out, action_required).
+	FailedChecks []string
+}
+
+// GetCIStatus returns a CIStatus for the PR's head commit. Check runs are
+// deduplicated by name, keeping the latest (highest ID) run per name to avoid
+// stale in-progress runs from workflow re-triggers blocking ci_ok.
+func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber int) (CIStatus, error) {
 	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
 	if err != nil {
-		return false, fmt.Errorf("failed to get PR: %w", err)
+		return CIStatus{}, fmt.Errorf("failed to get PR: %w", err)
 	}
 	sha := pr.GetHead().GetSHA()
 	if sha == "" {
-		return false, fmt.Errorf("PR #%d head SHA is empty", prNumber)
+		return CIStatus{}, fmt.Errorf("PR #%d head SHA is empty", prNumber)
 	}
 
+	// Collect all check runs, deduplicating by name (keep latest by ID).
+	latest := make(map[string]*github.CheckRun)
 	opts := &github.ListCheckRunsOptions{ListOptions: github.ListOptions{PerPage: 100}}
 	for {
 		result, resp, err := c.gh.Checks.ListCheckRunsForRef(ctx, owner, repo, sha, opts)
 		if err != nil {
-			return false, fmt.Errorf("failed to list check runs: %w", err)
+			return CIStatus{}, fmt.Errorf("failed to list check runs: %w", err)
 		}
-		for _, r := range result.CheckRuns {
-			if r.GetStatus() != "completed" {
-				return false, nil
-			}
-			switch r.GetConclusion() {
-			case "success", "skipped", "neutral":
-			default:
-				return false, nil
+		for i := range result.CheckRuns {
+			r := result.CheckRuns[i]
+			name := r.GetName()
+			if existing, ok := latest[name]; !ok || r.GetID() > existing.GetID() {
+				latest[name] = r
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -663,7 +675,23 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 		}
 		opts.Page = resp.NextPage
 	}
-	return true, nil
+
+	var pending, failed []string
+	for name, r := range latest {
+		if r.GetStatus() != "completed" {
+			pending = append(pending, name)
+			continue
+		}
+		switch r.GetConclusion() {
+		case "success", "skipped", "neutral":
+			// passing
+		default:
+			failed = append(failed, name)
+		}
+	}
+	sort.Strings(pending)
+	sort.Strings(failed)
+	return CIStatus{OK: len(pending) == 0 && len(failed) == 0, PendingChecks: pending, FailedChecks: failed}, nil
 }
 
 // ResolveThread resolves a review thread. Returns true if it was already resolved before the call.
