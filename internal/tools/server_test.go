@@ -343,8 +343,131 @@ func handlerServerSessionCount(handler *StreamableHandler) int {
 	return count
 }
 
+
+// nonFlushingResponseWriter wraps http.ResponseWriter without forwarding
+// http.Flusher, so type-asserting for it always fails.
+type nonFlushingResponseWriter struct{ http.ResponseWriter }
+
+// TestStreamableHandlerServeHTTPNonFlusherNotExposed is a regression test for
+// the sessionRecorderFlusher optional-interface contract: when the underlying
+// ResponseWriter does not implement http.Flusher, the writer passed to the
+// inner handler must also not expose http.Flusher.
+func TestStreamableHandlerServeHTTPNonFlusherNotExposed(t *testing.T) {
+	var sawFlusher bool
+	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, sawFlusher = w.(http.Flusher)
+	})
+	h := &StreamableHandler{
+		handler:       fakeInner,
+		sessionLogins: make(map[string]string),
+	}
+	t.Cleanup(h.Close)
+
+	nfw := &nonFlushingResponseWriter{ResponseWriter: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+
+	h.ServeHTTP(nfw, req)
+
+	if sawFlusher {
+		t.Error("inner handler saw http.Flusher on a writer whose underlying ResponseWriter does not support it")
+	}
+}
+
+// TestSessionRecorderUnwrap verifies that sessionRecorder.Unwrap returns the
+// underlying ResponseWriter, enabling http.ResponseController to traverse the
+// middleware chain and reach optional interfaces on the original writer.
+// sessionRecorderFlusher inherits the same path via embedding.
+func TestSessionRecorderUnwrap(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sr := &sessionRecorder{ResponseWriter: rec}
+	if got := sr.Unwrap(); got != rec {
+		t.Errorf("sessionRecorder.Unwrap() = %v, want underlying ResponseWriter", got)
+	}
+
+	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
+	if got := srf.Unwrap(); got != rec {
+		t.Errorf("sessionRecorderFlusher.Unwrap() = %v, want underlying ResponseWriter", got)
+	}
+}
+
+// post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
+// A fake inner handler sets Mcp-Session-Id in the response headers and returns
+// without calling Write, WriteHeader, or Flush — exercising the implicit-commit
+// path where net/http would commit the headers on handler return. The test
+// confirms that sessionLogins is populated despite no explicit commit call.
+func TestStreamableHandlerServeHTTPFallbackRegistersSession(t *testing.T) {
+	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Sets the session header but intentionally calls no write methods,
+		// simulating the implicit-commit path.
+		w.Header().Set(mcpSessionIDHeader, "implicit-sid")
+	})
+	h := &StreamableHandler{
+		handler:       fakeInner,
+		sessionLogins: make(map[string]string),
+	}
+	t.Cleanup(h.Close)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	ctx := context.WithValue(req.Context(), middleware.ContextKeyLogin, "alice")
+	req = req.WithContext(ctx)
+
+	h.ServeHTTP(rec, req)
+
+	h.mu.Lock()
+	login, registered := h.sessionLogins["implicit-sid"]
+	h.mu.Unlock()
+
+	if !registered {
+		t.Fatal("post-ServeHTTP fallback did not register session for implicit-commit path")
+	}
+	if login != "alice" {
+		t.Fatalf("registered login = %q, want alice", login)
+	}
+}
+
 func handlerSessionLoginCount(handler *StreamableHandler) int {
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
 	return len(handler.sessionLogins)
+}
+
+// TestSessionRecorderFlushRegistersSession verifies that sessionRecorderFlusher.Flush
+// calls rememberSession before forwarding to the underlying http.Flusher,
+// covering the race path where the SDK sets Mcp-Session-Id and flushes headers
+// without a prior Write or WriteHeader call.
+func TestSessionRecorderFlushRegistersSession(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	rec := httptest.NewRecorder()
+	rec.Header().Set(mcpSessionIDHeader, "flush-session-id")
+
+	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
+	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
+	srf.Flush()
+
+	handler.mu.Lock()
+	login, registered := handler.sessionLogins["flush-session-id"]
+	handler.mu.Unlock()
+
+	if !registered {
+		t.Fatal("Flush() did not register session via rememberSession")
+	}
+	if login != "alice" {
+		t.Fatalf("Flush() registered login = %q, want alice", login)
+	}
+	if !rec.Flushed {
+		t.Fatal("Flush() did not forward to the underlying http.Flusher")
+	}
+
+	// A second Flush must not double-register (once.Do guarantee).
+	srf.Flush()
+	handler.mu.Lock()
+	count := len(handler.sessionLogins)
+	handler.mu.Unlock()
+	if count != 1 {
+		t.Fatalf("session login count after second Flush = %d, want 1 (once.Do)", count)
+	}
 }

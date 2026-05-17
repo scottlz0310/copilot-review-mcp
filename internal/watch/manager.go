@@ -1018,6 +1018,7 @@ func snapshotFromReviewWatchEntry(entry *store.ReviewWatchEntry) Snapshot {
 		LastPolledAt:     nil,
 		RateLimitResetAt: cloneTimePtr(entry.RateLimitResetAt),
 		LastError:        cloneStringPtr(entry.LastError),
+		RecoveryHint:     cloneStringPtr(entry.RecoveryHint),
 	}
 }
 
@@ -1043,6 +1044,7 @@ func (m *Manager) persistLocked(w *watchState) error {
 		StaleAt:          cloneTimePtr(w.staleAt),
 		LastError:        cloneStringPtr(w.lastError),
 		RateLimitResetAt: cloneTimePtr(w.rateLimitResetAt),
+		RecoveryHint:     cloneStringPtr(w.recoveryHint),
 	}
 	return m.db.UpsertReviewWatch(reviewWatch)
 }

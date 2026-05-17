@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS review_watch (
     completed_at        INTEGER,
     stale_at            INTEGER,
     last_error          TEXT,
-    rate_limit_reset_at INTEGER
+    rate_limit_reset_at INTEGER,
+    recovery_hint       TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_review_watch_active_per_pr
     ON review_watch(github_login, owner, repo, pr)
@@ -116,6 +117,43 @@ func Open(path string) (*DB, error) {
 			return nil, fmt.Errorf("migration add prev_review_id: %w", err)
 		}
 	}
+	// Migration: add recovery_hint column to review_watch for persisting auth-failure recovery hints.
+	var recoveryHintExists bool
+	rwRows, err := db.Query(`PRAGMA table_info(review_watch)`)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migration check review_watch table_info: %w", err)
+	}
+	for rwRows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue interface{}
+		if err := rwRows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			_ = rwRows.Close()
+			_ = db.Close()
+			return nil, fmt.Errorf("migration scan review_watch table_info: %w", err)
+		}
+		if name == "recovery_hint" {
+			recoveryHintExists = true
+			break
+		}
+	}
+	if err := rwRows.Err(); err != nil {
+		_ = rwRows.Close()
+		_ = db.Close()
+		return nil, fmt.Errorf("migration iterate review_watch table_info: %w", err)
+	}
+	if err := rwRows.Close(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migration close review_watch table_info rows: %w", err)
+	}
+	if !recoveryHintExists {
+		if _, err := db.Exec(`ALTER TABLE review_watch ADD COLUMN recovery_hint TEXT`); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("migration add recovery_hint: %w", err)
+		}
+	}
 	if _, err := db.Exec(reviewWatchLookupIndexSQL); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -159,6 +197,7 @@ type ReviewWatchEntry struct {
 	StaleAt          *time.Time
 	LastError        *string
 	RateLimitResetAt *time.Time
+	RecoveryHint     *string
 }
 
 // ReviewWatchFilter scopes a review_watch listing query.
@@ -279,8 +318,9 @@ func (d *DB) UpsertReviewWatch(entry ReviewWatchEntry) error {
 		`INSERT INTO review_watch (
 		    id, github_login, owner, repo, pr, trigger_log_id, resource_uri,
 		    watch_status, review_status, failure_reason, is_active,
-		    started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		    started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at,
+		    recovery_hint
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 		    trigger_log_id      = excluded.trigger_log_id,
 		    resource_uri        = excluded.resource_uri,
@@ -292,7 +332,8 @@ func (d *DB) UpsertReviewWatch(entry ReviewWatchEntry) error {
 		    completed_at        = excluded.completed_at,
 		    stale_at            = excluded.stale_at,
 		    last_error          = excluded.last_error,
-		    rate_limit_reset_at = excluded.rate_limit_reset_at`,
+		    rate_limit_reset_at = excluded.rate_limit_reset_at,
+		    recovery_hint       = excluded.recovery_hint`,
 		entry.ID,
 		entry.GitHubLogin,
 		entry.Owner,
@@ -310,6 +351,7 @@ func (d *DB) UpsertReviewWatch(entry ReviewWatchEntry) error {
 		nullTime(entry.StaleAt),
 		nullString(entry.LastError),
 		nullTime(entry.RateLimitResetAt),
+		nullString(entry.RecoveryHint),
 	)
 	return err
 }
@@ -319,7 +361,8 @@ func (d *DB) GetReviewWatchByID(id string) (*ReviewWatchEntry, error) {
 	row := d.db.QueryRow(
 		`SELECT id, github_login, owner, repo, pr, trigger_log_id, resource_uri,
 		        watch_status, review_status, failure_reason, is_active,
-		        started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at
+		        started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at,
+		        recovery_hint
 		   FROM review_watch
 		  WHERE id = ?`,
 		id,
@@ -332,7 +375,8 @@ func (d *DB) GetLatestReviewWatch(login, owner, repo string, pr int) (*ReviewWat
 	row := d.db.QueryRow(
 		`SELECT id, github_login, owner, repo, pr, trigger_log_id, resource_uri,
 		        watch_status, review_status, failure_reason, is_active,
-		        started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at
+		        started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at,
+		        recovery_hint
 		   FROM review_watch
 		  WHERE github_login = ? AND owner = ? AND repo = ? AND pr = ?
 		  ORDER BY updated_at DESC, started_at DESC, rowid DESC
@@ -346,7 +390,8 @@ func (d *DB) GetLatestReviewWatch(login, owner, repo string, pr int) (*ReviewWat
 func (d *DB) ListReviewWatches(filter ReviewWatchFilter) ([]ReviewWatchEntry, error) {
 	query := `SELECT id, github_login, owner, repo, pr, trigger_log_id, resource_uri,
 	                 watch_status, review_status, failure_reason, is_active,
-	                 started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at
+	                 started_at, updated_at, completed_at, stale_at, last_error, rate_limit_reset_at,
+	                 recovery_hint
 	            FROM review_watch
 	           WHERE github_login = ?`
 	args := []any{filter.GitHubLogin}
@@ -437,6 +482,7 @@ func scanReviewWatch(row scanner) (*ReviewWatchEntry, error) {
 		staleAt          sql.NullInt64
 		lastError        sql.NullString
 		rateLimitResetAt sql.NullInt64
+		recoveryHint     sql.NullString
 		isActive         int
 		startedAtUnix    int64
 		updatedAtUnix    int64
@@ -459,6 +505,7 @@ func scanReviewWatch(row scanner) (*ReviewWatchEntry, error) {
 		&staleAt,
 		&lastError,
 		&rateLimitResetAt,
+		&recoveryHint,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -476,6 +523,7 @@ func scanReviewWatch(row scanner) (*ReviewWatchEntry, error) {
 	entry.StaleAt = fromNullUnix(staleAt)
 	entry.LastError = fromNullString(lastError)
 	entry.RateLimitResetAt = fromNullUnix(rateLimitResetAt)
+	entry.RecoveryHint = fromNullString(recoveryHint)
 	return &entry, nil
 }
 

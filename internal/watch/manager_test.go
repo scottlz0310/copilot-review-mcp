@@ -452,6 +452,80 @@ func TestManagerRecoveryHintNilForNonGatewayError(t *testing.T) {
 	}
 }
 
+// TestManagerRecoveryHintPersistedAndReconstructed verifies that after a watch
+// terminates with an AUTH_EXPIRED failure reason the recovery_hint written to the
+// DB by persistLocked is correctly reconstructed by snapshotFromReviewWatchEntry
+// when a new manager instance reads the historical terminal entry from the DB
+// (simulating a process restart).
+func TestManagerRecoveryHintPersistedAndReconstructed(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "manager-hint-persist.db")
+
+	// Phase 1: run manager, trigger an auth-failure, capture WatchID + hint.
+	var watchID string
+	var originalHint string
+	{
+		db, err := store.Open(dbPath)
+		if err != nil {
+			t.Fatalf("store.Open(phase1) error = %v", err)
+		}
+		manager := NewManager(db, Options{
+			PollInterval: 5 * time.Millisecond,
+			Threshold:    30 * time.Second,
+			ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
+				return &fakeFetcher{results: []fetchResult{{err: ghclient.ErrGatewaySubjectGone}}}
+			},
+		})
+
+		started, _, err := manager.Start(StartInput{
+			Login: "alice", Token: "tok", Owner: "octo", Repo: "demo", PR: 2200,
+		})
+		if err != nil {
+			t.Fatalf("Start() error = %v", err)
+		}
+		watchID = started.WatchID
+
+		snap := waitForWatch(t, manager, watchID, func(s Snapshot) bool { return s.Terminal })
+		if snap.RecoveryHint == nil {
+			t.Fatal("Phase1: RecoveryHint = nil, want non-nil after ErrGatewaySubjectGone")
+		}
+		originalHint = *snap.RecoveryHint
+
+		manager.Close()
+		if err := db.Close(); err != nil {
+			t.Fatalf("db.Close(phase1) error = %v", err)
+		}
+	}
+
+	// Phase 2: open a fresh manager from the same DB — simulates process restart.
+	// The watch is a historical terminal entry (FAILED, is_active=false) and will
+	// not be marked STALE by Open; GetByID must use snapshotFromReviewWatchEntry.
+	{
+		db2, err := store.Open(dbPath)
+		if err != nil {
+			t.Fatalf("store.Open(phase2) error = %v", err)
+		}
+		defer func() { _ = db2.Close() }()
+
+		manager2 := NewManager(db2, Options{
+			PollInterval:  time.Hour, // no new polls needed
+			Threshold:     30 * time.Second,
+			ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher { return nil },
+		})
+		defer manager2.Close()
+
+		snap, ok := manager2.GetByID(watchID)
+		if !ok {
+			t.Fatalf("Phase2: GetByID(%q) = not found", watchID)
+		}
+		if snap.RecoveryHint == nil {
+			t.Fatal("Phase2: RecoveryHint = nil after restart, want hint reconstructed from DB")
+		}
+		if *snap.RecoveryHint != originalHint {
+			t.Fatalf("Phase2: RecoveryHint = %q, want %q", *snap.RecoveryHint, originalHint)
+		}
+	}
+}
+
 func TestManagerGatewayUpstreamFailureIsNotAuthExpired(t *testing.T) {
 	// N-1 consecutive upstream failures followed by a success must NOT escalate
 	// to AUTH_EXPIRED. The watch should complete normally after the success.

@@ -79,6 +79,64 @@ type StreamableHandler struct {
 	closeOnce     sync.Once
 }
 
+// sessionRecorder wraps http.ResponseWriter and calls rememberSession at the
+// moment the SDK first commits response headers (WriteHeader, Write, or Flush),
+// ensuring the session is registered before any bytes reach the client. This
+// closes the race where a client reads the Mcp-Session-Id from the response
+// and immediately sends a follow-up request before ServeHTTP returns.
+//
+// Unwrap allows http.ResponseController and other middleware to traverse the
+// wrapper chain and access optional interfaces (e.g., http.Hijacker, write
+// deadlines) on the original ResponseWriter.
+type sessionRecorder struct {
+	http.ResponseWriter
+	login   string
+	handler *StreamableHandler
+	once    sync.Once
+}
+
+// Unwrap returns the underlying http.ResponseWriter, enabling
+// http.ResponseController to reach optional interfaces on the original writer.
+func (sr *sessionRecorder) Unwrap() http.ResponseWriter {
+	return sr.ResponseWriter
+}
+
+// captureSession reads Mcp-Session-Id from the response headers and calls
+// rememberSession. It is invoked via once.Do so it runs at most once per request.
+func (sr *sessionRecorder) captureSession() {
+	if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
+		sr.handler.rememberSession(sid, sr.login)
+	}
+}
+
+func (sr *sessionRecorder) WriteHeader(code int) {
+	sr.once.Do(sr.captureSession)
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+func (sr *sessionRecorder) Write(b []byte) (int, error) {
+	sr.once.Do(sr.captureSession)
+	return sr.ResponseWriter.Write(b)
+}
+
+// sessionRecorderFlusher wraps sessionRecorder and conditionally adds
+// http.Flusher. It is used only when the underlying ResponseWriter itself
+// implements http.Flusher, preserving the optional-interface contract:
+// handlers that check for Flusher support via type-assertion see the same
+// capability as the original writer.
+type sessionRecorderFlusher struct {
+	*sessionRecorder
+	flusher http.Flusher
+}
+
+// Flush calls captureSession (via once.Do) before forwarding to the
+// underlying http.Flusher so SSE events are pushed immediately and the
+// session is registered even when the SDK flushes before Write/WriteHeader.
+func (srf *sessionRecorderFlusher) Flush() {
+	srf.once.Do(srf.captureSession)
+	srf.flusher.Flush()
+}
+
 // ServeHTTP proxies requests to the underlying MCP streamable handler.
 func (h *StreamableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	login := middleware.LoginFromContext(r.Context())
@@ -88,11 +146,20 @@ func (h *StreamableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.handler.ServeHTTP(w, r)
-
-	if responseSessionID := w.Header().Get(mcpSessionIDHeader); responseSessionID != "" && login != "" {
-		h.rememberSession(responseSessionID, login)
+	sr := &sessionRecorder{ResponseWriter: w, login: login, handler: h}
+	// Only advertise http.Flusher when the original writer supports it, to
+	// preserve the optional-interface contract for handlers that type-assert
+	// for Flusher (e.g., SSE/MCP streaming).
+	var rw http.ResponseWriter = sr
+	if f, ok := w.(http.Flusher); ok {
+		rw = &sessionRecorderFlusher{sessionRecorder: sr, flusher: f}
 	}
+	h.handler.ServeHTTP(rw, r)
+	// Fallback for implicit header commits: net/http writes headers on handler
+	// return if the handler never called Write, WriteHeader, or Flush. The
+	// once.Do is a no-op when captureSession already ran inside ServeHTTP.
+	sr.once.Do(sr.captureSession)
+
 	if r.Method == http.MethodDelete && sessionID != "" {
 		h.forgetSession(sessionID)
 	}
