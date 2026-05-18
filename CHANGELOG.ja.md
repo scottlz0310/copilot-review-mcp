@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-05-18
+
 ### 追加
 
 - **Phase B 委譲バックグラウンドアクセス — gateway 統合テスト (PR-C)** — [Issue #40](https://github.com/scottlz0310/copilot-review-mcp/issues/40)（[Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29) の一部）:
@@ -95,3 +97,9 @@
 
 - この独立リポジトリでは、Mcp-Docker 時代の `copilot-review-mcp` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
+
+[Unreleased]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.1.0...v3.2.0
+[3.1.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v2.5.0...v3.0.0
+[2.5.0]: https://github.com/scottlz0310/copilot-review-mcp/releases/tag/v2.5.0
