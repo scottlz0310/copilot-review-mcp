@@ -9,6 +9,11 @@
 
 ## [Unreleased]
 
+### 変更
+
+- `docs/skills/pr-review-cycle.md` / `.ja.md` — Phase 6 `REQUEST_REREVIEW` アクションを更新: `request_copilot_review` の呼び出しを `add_issue_comment` による `@thread-owl re-review requested` 投稿に変更。reviewed-side cycle はここで完了し、次の reviewer-side cycle は thread-owl webhook → queue → mcp-resource-subscriber に委譲される。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
+- `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。
+
 ### 削除
 
 - **旧 `copilot-review://` URI スキームおよび `COPILOT_REVIEW_*` 環境変数を削除** ([Issue #66](https://github.com/scottlz0310/review-raven/issues/66)):

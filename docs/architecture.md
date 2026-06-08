@@ -66,6 +66,20 @@ Watch resources use the `review-raven://watch/{id}` scheme. The legacy `copilot-
 
 Tool names (`request_copilot_review`, `start_copilot_review_watch`, etc.) are unchanged for public API compatibility.
 
+## Re-review request flow
+
+After completing fixes, review-raven posts `@thread-owl re-review requested` on the PR via `add_issue_comment`. This is the boundary between the reviewed-side cycle and the reviewer-side cycle.
+
+| Component | Responsibility |
+|---|---|
+| **review-raven** (reviewed side) | Posts `@thread-owl re-review requested` comment after fix → reply → resolve. This ends the reviewed-side cycle. |
+| **thread-owl** (reviewer side) | Detects the `@thread-owl` mention via `issue_comment.created` webhook → enqueues as `ReviewCandidate.reason = "re-review-requested"` → notifies `queue://review/queue` resource. |
+| **mcp-resource-subscriber** | Subscribes to the queue resource and bridges the update to the agent workflow. |
+
+review-raven does not own or manage the review queue. The `@thread-owl` comment is the handoff point. After posting it, the reviewed-side cycle is complete; the next reviewer-side cycle starts from thread-owl's queue.
+
+This approach uses GitHub's standard PR conversation rather than a Copilot-specific API, so it works with any reviewer identity (Copilot, human, bot).
+
 ## Relation to pr-review-subscribe skill
 
 The `pr-review-subscribe` skill is the upper-level workflow integrating review acquisition, thread handling, and fix workflow. review-raven serves as the reviewed-side MCP provider within that skill.
