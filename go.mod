@@ -1,4 +1,4 @@
-module github.com/scottlz0310/copilot-review-mcp
+module github.com/scottlz0310/review-raven
 
 go 1.26.4
 

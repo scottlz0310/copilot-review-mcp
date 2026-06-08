@@ -1,4 +1,4 @@
-# copilot-review-mcp Watch ツールフロー
+# review-raven Watch ツールフロー
 
 [English](watch-tools.md)
 
@@ -47,13 +47,13 @@ watch 系ツールは `recommended_next_action` と、必要に応じて `next_p
 
 ## 補足
 
-- `resource_uri` は watch の安定 ID です。`copilot-review://watch/{watch_id}` スキームで read/subscribe が利用可能です（`RegisterWatchResources` / `SubscribeHandler` 実装済み）。
+- `resource_uri` は watch の安定 ID です。`review-raven://watch/{watch_id}` スキームで read/subscribe が利用可能です（`RegisterWatchResources` / `SubscribeHandler` 実装済み）。
 - watch state は SQLite に保存されますが、worker 自体は memory-only です。プロセス再起動後の active watch は `STALE` になります。
 - 一覧系は同一 `github_login` の watch だけを返します。
 
 ## Stateful Session 基盤（#64）
 
-#64 以降、`copilot-review-mcp` の Streamable HTTP は stateless ではなく stateful session として扱います。
+#64 以降、`review-raven` の Streamable HTTP は stateless ではなく stateful session として扱います。
 
 - 初回 initialize で発行された `Mcp-Session-Id` を後続 request で再利用します。
 - MCP server は request ごとに作成されず、プロセス内の長寿命 server が複数 stateful session を保持します。

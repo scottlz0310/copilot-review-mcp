@@ -1,7 +1,7 @@
 # Spike 調査結果: Auth Lifecycle Mismatch for Background MCP Workflows
 
 > 対象 Issue: https://github.com/scottlz0310/mcp-gateway/issues/70
-> 調査リポジトリ: `scottlz0310/copilot-review-mcp`
+> 調査リポジトリ: `scottlz0310/review-raven`
 
 ---
 
@@ -18,7 +18,7 @@
     X-Authenticated-User: <login>
     │
     ▼ HTTP Request (per-request)
-[copilot-review-mcp / middleware/auth.go]
+[review-raven / middleware/auth.go]
     │ login, token を request context に格納
     │ (リクエストが終わると context は破棄される)
     ▼
@@ -88,7 +88,7 @@
 
 ```
 MCP セッション    : 無期限 (MCP_SESSION_TIMEOUT_MIN=0 がデフォルト)
-gateway トークン  : gateway の管理下 (copilot-review-mcp からは不可視)
+gateway トークン  : gateway の管理下 (review-raven からは不可視)
 GitHub アクセストークン : トークン有効期限まで
 ウォッチ          : 最大 2 時間
 ```
@@ -110,7 +110,7 @@ GitHub アクセストークン : トークン有効期限まで
 | 問題 | 修正コンポーネント | 優先度 |
 |---|---|---|
 | トークン陳腐化による `FailureReasonAuthExpired` | **設計上の許容範囲** — LLM が `REAUTH_AND_START_NEW_WATCH` に従えばよい | 低 |
-| `InvalidateToken: nil` (gateway への 401 通知なし) | `copilot-review-mcp` (`server.go:176`) + `mcp-gateway` が無効化 API を提供する必要 | 中 |
+| `InvalidateToken: nil` (gateway への 401 通知なし) | `review-raven` (`server.go:176`) + `mcp-gateway` が無効化 API を提供する必要 | 中 |
 | mcp-gateway がトークン更新した際の upstream への通知 | **mcp-gateway** が更新トークンを後続リクエストで注入する | gateway 側の設計次第 |
 | サーバー再起動後の `is_active` ウォッチの不整合 | **実装済み** — `store.Open()` 時に `MarkActiveReviewWatchesStale()` が全 active ウォッチを即座に STALE 化する | — |
 

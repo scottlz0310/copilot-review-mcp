@@ -9,24 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.2.0] - 2026-05-18
+## [0.1.0] - 2026-06-08
+
+First release as **review-raven** — product identity rename and architecture docs.
+This version restarts the version sequence from `0.1.0`. The pre-rename lineage (`copilot-review-mcp` v2.5.0 – v3.2.0) is preserved below as legacy history.
+
+### Changed
+
+- **Repository renamed from `copilot-review-mcp` to `review-raven`** ([Issue #63](https://github.com/scottlz0310/review-raven/issues/63)):
+  - Go module path updated: `github.com/scottlz0310/copilot-review-mcp` → `github.com/scottlz0310/review-raven`
+  - MCP server implementation name updated: `"copilot-review-mcp"` → `"review-raven"`; version restarted at `0.1.0`
+  - Resource URI scheme updated: `copilot-review://watch/{id}` → `review-raven://watch/{id}`
+  - MCP client configuration key updated: `"copilot-review"` → `"review-raven"` (tool prefix: `mcp__review-raven__*`)
+  - Environment variables renamed: `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` → `REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET` (old names remain as fallback for backward compatibility)
+  - Default SQLite path updated: `/data/copilot-review.db` → `/data/review-raven.db` (overridable via `SQLITE_PATH`)
+  - Docker image/container/volume names updated: `copilot-review-mcp` → `review-raven`, `copilot-review-data` → `review-raven-data`
+  - `.env.template` updated with canonical `REVIEW_RAVEN_*` variable names and a migration/compatibility section for legacy `COPILOT_REVIEW_*` names
+  - Legacy URI scheme `copilot-review://watch/{id}` accepted as a deprecated read/subscribe alias; new URIs use `review-raven://watch/{id}` only
 
 ### Added
 
-- **Phase B delegated background access — gateway integration tests (PR-C)** for [Issue #40](https://github.com/scottlz0310/copilot-review-mcp/issues/40) (part of [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29)):
+- `docs/architecture.md` / `docs/architecture.ja.md` — new document defining the reviewed-side MCP server role and responsibility boundaries with Thread Owl, mcp-resource-subscriber, and github-mcp-server. Includes Migration / Compatibility section covering URI scheme, environment variable, and tool name compatibility.
+
+---
+
+## Pre-rename history (copilot-review-mcp)
+
+The entries below document the `copilot-review-mcp` era (git tags `v2.5.0` – `v3.2.0`).
+Version numbers in this section refer to that lineage and are unrelated to the `review-raven` versioning above.
+
+### [3.2.0] - 2026-05-18
+
+#### Added
+
+- **Phase B delegated background access — gateway integration tests (PR-C)** for [Issue #40](https://github.com/scottlz0310/review-raven/issues/40) (part of [Issue #29](https://github.com/scottlz0310/review-raven/issues/29)):
   - `internal/watch/gateway_integration_test.go` exercises the full chain `gatewayTokenSource → oauth2.ReuseTokenSource → oauth2.Transport → *ghclient.Client → watch.Manager.pollOnce` end-to-end using a fake `POST /internal/v1/whoami` server and a minimal fake GitHub REST surface, mirroring the production wiring in `cmd/server/main.go`'s `buildGatewayClientFactory`.
   - Covers six scenarios: happy path (200 → `COMPLETED`), subject gone (404 → `FAILED`/`AUTH_EXPIRED` with re-seed hint), rotation failed (502/rotation_failed → `FAILED`/`AUTH_EXPIRED` with refresh-rejected hint), single upstream failure stays `WATCHING`, consecutive upstream failures escalate to `FAILED`/`AUTH_EXPIRED` with the consecutive-polls hint, and token rotation visible to GitHub (`oauth2.ReuseTokenSource` re-fetches a rotated token across polls).
   - Distinct from existing `manager_test.go` cases that feed sentinel errors directly through `fakeFetcher`; these tests fail closed if the real gateway-backed wiring regresses (e.g., factory refactor breaks the chain).
-- **Phase B delegated background access — client core (PR-A)** for [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
+- **Phase B delegated background access — client core (PR-A)** for [Issue #29](https://github.com/scottlz0310/review-raven/issues/29):
   - `internal/github/gateway_token_source.go` — `gatewayTokenSource` implements `oauth2.TokenSource` against the gateway's `POST /internal/v1/whoami` endpoint. Validates loopback host (`127.0.0.1` / `::1` / `localhost`) at construction; parses `expires_at` into `oauth2.Token.Expiry` so `oauth2.ReuseTokenSource` only re-resolves near expiry.
   - Sentinel errors `ErrGatewaySubjectGone` (404), `ErrGatewayUnauthorized` (401), `ErrGatewayLoopbackRequired` (403), `ErrGatewayUpstreamFailure` (502), `ErrGatewayBadRequest` (other 4xx), `ErrGatewayNonLoopback`. Mapping to `FailureReasonAuthExpired` / recovery hints is deferred to PR-B.
   - `internal/github/client.go` — new `NewClientWithTokenSource(ctx, ts, threshold)` for dynamic-token clients (no `invalidatingTransport`; activation deferred to PR-B).
   - `internal/tools/server.go` — new `BuilderOptions{GatewayClientFactory}` and `BuildStreamableHandlerWithOptions`. Existing `BuildStreamableHandler(db, threshold)` is unchanged.
-  - `cmd/server/main.go` — opt-in via `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` and `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET`. When unset, watch goroutines keep using `oauth2.StaticTokenSource` (no behavior change). Fail-closed: setting only one of the two env vars exits at startup.
+  - `cmd/server/main.go` — opt-in via `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` and `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET`. When unset, watch goroutines keep using `oauth2.StaticTokenSource` (no behavior change). Fail-closed: setting only one of the two env vars exits at startup.
   - **Subject** sent to the gateway is the authenticated GitHub login (per gateway docs).
   - **Limitation**: PoC requires client and gateway on the same host (loopback). Cross-container Docker Compose deployments are not supported in PR-A.
 
-### Changed
+#### Changed
 
 - `watch.Options.ClientFactory` signature extended from `func(ctx, token string) ReviewDataFetcher` to `func(ctx, token, login string) ReviewDataFetcher`. Internal-only callers updated.
 - **Phase B PR-A review feedback (PR #30 Copilot review)**:
@@ -36,11 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `buildGatewayClientFactory` now constructs a single shared `*http.Client` once and passes it via `GatewayTokenSourceConfig.HTTPClient` to every per-watch token source (transport / idle-connection pool reuse). Runtime fallback to static tokens (only reachable on empty GitHub login) is now logged at `slog.Error`.
   - `GatewayTokenSourceConfig.HTTPClient` documentation clarified: the token source itself must be per-subject, but the underlying `*http.Client` / `http.Transport` is designed for concurrent reuse and should be shared across watches.
 
-## [3.1.0] - 2026-05-09
+### [3.1.0] - 2026-05-09
 
-### Added
+#### Added
 
-- **Five new structured error types** in `internal/autherr` completing [Issue #21](https://github.com/scottlz0310/copilot-review-mcp/issues/21):
+- **Five new structured error types** in `internal/autherr` completing [Issue #21](https://github.com/scottlz0310/review-raven/issues/21):
   - `PERMISSION_DENIED` — HTTP 403 responses (non-rate-limit)
   - `RATE_LIMITED` — primary (`*github.RateLimitError`) and secondary/abuse (`*github.AbuseRateLimitError`) rate limits; `retryable` and `safe_to_continue` are situation-dependent
   - `NOT_FOUND` — HTTP 404 responses
@@ -49,13 +78,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ClassifyGitHubError(err error) *autherr.AuthError`** in `internal/github/client.go` — a single entry point that classifies any GitHub API error (REST `*github.ErrorResponse`, `*github.RateLimitError`, `*github.AbuseRateLimitError`, shurcooL/githubv4 string-matched errors, and already-classified `*autherr.AuthError`) into the appropriate structured error type.
 - `tryAuthResult` and `authErrString` in `internal/tools/auth_result.go` now call `ClassifyGitHubError` instead of `IsAuthError`, so all tool handlers automatically return structured errors for any of the 8 error types without additional per-handler changes.
 
-### Changed
+#### Changed
 
-- Skill templates (`docs/skills/`) updated to use MCP server key `copilot-review` (was `copilot-review-mcp`) and `github` (was `github-mcp-server-docker`), matching the defaults used in mcp-docker / mcp-gateway setups (#23). Usage docs (`docs/usage.md`, `docs/usage.ja.md`) aligned to the same convention.
+- Skill templates (`docs/skills/`) updated to use MCP server key `copilot-review` (was `review-raven`) and `github` (was `github-mcp-server-docker`), matching the defaults used in mcp-docker / mcp-gateway setups (#23). Usage docs (`docs/usage.md`, `docs/usage.ja.md`) aligned to the same convention.
 
-## [3.0.0] - 2026-05-06
+### [3.0.0] - 2026-05-06
 
-### Removed
+#### Removed
 
 - **Standalone GitHub OAuth App flow removed entirely.** `internal/auth` package (handler, session, token cache) deleted.
 - `AuthModeStandalone`, `AuthModeGateway` constants and `AuthMode` type removed from `internal/middleware`.
@@ -63,18 +92,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Environment variables removed: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
 - OAuth endpoints (`/.well-known/oauth-authorization-server`, `/authorize`, `/callback`, `/token`, `/register`) now return **410 Gone** with a migration message.
 
-### Changed
+#### Changed
 
 - **mcp-gateway is now required** for authentication. The server trusts the `X-Authenticated-User` header and `Authorization: Bearer` token injected by the gateway.
 - `BuildStreamableHandler(db, threshold)` — third argument removed.
 - `middleware.Auth()` — no longer accepts a `TokenValidator` or `AuthMode`; gateway-only.
 - Version bumped to `3.0.0` in the MCP server implementation metadata.
 
-### Added
+#### Added
 
 - `BIND_ADDR` environment variable (default `127.0.0.1`). Set to `0.0.0.0` in Docker so the container is reachable from mcp-gateway on the same network.
 
-### Migration
+#### Migration
 
 If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 
@@ -82,24 +111,21 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 2. Remove the following environment variables: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `AUTH_MODE`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC` (see "Breaking Changes" above for the full list of removed variables).
 3. Point your MCP client at the mcp-gateway URL. For stdio clients use [mcp-remote](https://github.com/geelen/mcp-remote).
 
-## [2.5.0] - 2026-04-26
+### [2.5.0] - 2026-04-26
 
-### Added
+#### Added
 
-- Split `services/copilot-review-mcp/` from [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) into a standalone repository
+- Split `services/review-raven/` from [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) into a standalone repository
 - Added the OAuth-enabled Streamable HTTP MCP server for Copilot review workflows
 - Added async watch tools, review-thread reply/resolve tools, and the `pr-review-cycle` skill template
 - Added SQLite-persisted watch state with stale-watch detection after process restart
 - Added bilingual English/Japanese README, changelog, watch-tool docs, skill docs, and usage docs
 - Added CI to test, scan, build, and publish Docker images to ghcr.io
 
-### Notes
+#### Notes
 
-- This standalone repository preserves release continuity from the original `copilot-review-mcp` service work in Mcp-Docker; git history was not migrated.
+- This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.2.0...HEAD
-[3.2.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.1.0...v3.2.0
-[3.1.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.0.0...v3.1.0
-[3.0.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v2.5.0...v3.0.0
-[2.5.0]: https://github.com/scottlz0310/copilot-review-mcp/releases/tag/v2.5.0
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0

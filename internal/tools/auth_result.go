@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
 )
 
 // authErrResult converts an *autherr.AuthError into a *mcp.CallToolResult.

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 func TestCycleStatusHandlerAuthRequired(t *testing.T) {

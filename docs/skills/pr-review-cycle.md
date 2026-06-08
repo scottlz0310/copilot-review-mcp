@@ -7,7 +7,7 @@ description: Waits for Copilot review completion via async watch polling (no mcp
 
 [日本語](pr-review-cycle.ja.md)
 
-A skill that uses the `copilot-review` MCP server's watch tools to wait for Copilot review completion via **async watch polling**, then autonomously runs the PR review response cycle.
+A skill that uses the `review-raven` MCP server's watch tools to wait for Copilot review completion via **async watch polling**, then autonomously runs the PR review response cycle.
 
 This skill relies only on MCP tools — no `mcp-resource-subscriber` or other subscription-based CLI is required. It is the polling-based alternative to `pr-review-subscribe` for environments where `mcp-resource-subscriber` is unavailable.
 
@@ -24,14 +24,14 @@ This skill relies only on MCP tools — no `mcp-resource-subscriber` or other su
 
 | Server | Role | Reference |
 |---------|------|-----------|
-| `copilot-review` | Copilot review watch & thread operations | [README.md](../../README.md) |
+| `review-raven` | Copilot review watch & thread operations | [README.md](../../README.md) |
 | `github` | Post Issue/PR comments | [README.md](../../README.md) |
 
 ### Placeholder Substitution
 
 | Placeholder | Role | Example |
 |-------------|------|---------|
-| `{CRM}` | `copilot-review` server tools | `mcp__copilot-review__*` |
+| `{CRM}` | `review-raven` server tools | `mcp__review-raven__*` |
 | `{GH}` | `github` server tools | `mcp__github__*` |
 
 > Tool name prefixes depend on your MCP client configuration. Check your IDE's MCP settings to confirm the exact prefix.
@@ -70,7 +70,7 @@ Call `{CRM}:start_copilot_review_watch` (returns immediately).
 
 Record:
 - `watch_id`
-- `resource_uri` (`copilot-review://watch/{watch_id}`)
+- `resource_uri` (`review-raven://watch/{watch_id}`)
 - `next_poll_seconds` (only present when `recommended_next_action=POLL_AFTER`)
 
 If an active watch for the same PR already exists, it is reused.

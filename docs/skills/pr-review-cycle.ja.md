@@ -7,7 +7,7 @@ description: Copilot レビュー完了を async watch ポーリング（mcp-res
 
 [English](pr-review-cycle.md)
 
-`copilot-review` サーバーの watch ツール群を使い、Copilot レビュー完了を
+`review-raven` サーバーの watch ツール群を使い、Copilot レビュー完了を
 **async watch ポーリング**で待機してから PR レビュー対応サイクルを自律実行するスキル。
 
 MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブスクリプション系外部 CLI は不要。
@@ -26,14 +26,14 @@ MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブス�
 
 | サーバー | 役割 | 参照 |
 |---------|------|------|
-| `copilot-review` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
+| `review-raven` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
 | `github` | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
 
 ### プレースホルダーの読み替え
 
 | プレースホルダー | 役割 | 例 |
 |----------------|------|-----|
-| `{CRM}` | `copilot-review` サーバーツール | `mcp__copilot-review__*` |
+| `{CRM}` | `review-raven` サーバーツール | `mcp__review-raven__*` |
 | `{GH}` | `github` サーバーツール | `mcp__github__*` |
 
 > ツール名プレフィックスはお使いの MCP クライアント設定によって異なります。IDE の MCP 設定で正確なプレフィックスを確認してください。
@@ -72,7 +72,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
 
 記録する項目:
 - `watch_id`
-- `resource_uri`（`copilot-review://watch/{watch_id}`）
+- `resource_uri`（`review-raven://watch/{watch_id}`）
 - `next_poll_seconds`（`recommended_next_action=POLL_AFTER` の場合のみ存在）
 
 同一 PR の active watch があれば再利用される。

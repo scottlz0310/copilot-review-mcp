@@ -2,7 +2,7 @@
 
 [日本語](usage.ja.md)
 
-This guide covers the basic setup needed to run `copilot-review-mcp` as an MCP server:
+This guide covers the basic setup needed to run `review-raven` as an MCP server:
 
 - Architecture overview (mcp-gateway required)
 - Docker start, stop, and logs
@@ -11,7 +11,7 @@ This guide covers the basic setup needed to run `copilot-review-mcp` as an MCP s
 
 For the tool-level flow, see [watch-tools.md](watch-tools.md). For the skill template itself, see [skills/pr-review-cycle.md](skills/pr-review-cycle.md).
 
-> **v3.0.0 BREAKING CHANGE**: Standalone OAuth has been removed. mcp-gateway is now required.
+> **mcp-gateway required**: Standalone OAuth is not supported. All traffic must pass through mcp-gateway. Migrating from `copilot-review-mcp`? See [architecture.md — Migration / Compatibility](architecture.md#migration--compatibility).
 
 ## Architecture
 
@@ -24,33 +24,33 @@ mcp-gateway  ──►  X-Authenticated-User + Authorization headers
     │
     │  HTTP (internal only)
     ▼
-copilot-review-mcp  :8083
+review-raven  :8083
     │
     │  SQLite
     ▼
-/data/copilot-review.db
+/data/review-raven.db
 ```
 
-`copilot-review-mcp` trusts the headers injected by mcp-gateway and never performs OAuth directly.
+`review-raven` trusts the headers injected by mcp-gateway and never performs OAuth directly.
 
 ## 1. Set up mcp-gateway
 
 Follow the [mcp-gateway documentation](https://github.com/mcp-b/mcp-gateway) to deploy and configure the gateway.
 
-Point one of its upstream routes at the address reachable **from the gateway** (e.g., `http://copilot-review-mcp:8083` when both run on the same Docker network, or `http://host.docker.internal:8083` on Docker Desktop).
+Point one of its upstream routes at the address reachable **from the gateway** (e.g., `http://review-raven:8083` when both run on the same Docker network, or `http://host.docker.internal:8083` on Docker Desktop).
 
-## 2. Run copilot-review-mcp with Docker
+## 2. Run review-raven with Docker
 
 ### Pull the published image
 
 ```bash
-docker pull ghcr.io/scottlz0310/copilot-review-mcp:latest
+docker pull ghcr.io/scottlz0310/review-raven:latest
 ```
 
 ### Build locally
 
 ```bash
-docker build -t copilot-review-mcp:dev .
+docker build -t review-raven:dev .
 ```
 
 ### Start the container
@@ -58,21 +58,21 @@ docker build -t copilot-review-mcp:dev .
 Published image:
 
 ```bash
-docker run -d --name copilot-review-mcp \
+docker run -d --name review-raven \
   -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  ghcr.io/scottlz0310/copilot-review-mcp:latest
+  -v review-raven-data:/data \
+  ghcr.io/scottlz0310/review-raven:latest
 ```
 
 Local image:
 
 ```bash
-docker run -d --name copilot-review-mcp \
+docker run -d --name review-raven \
   -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  copilot-review-mcp:dev
+  -v review-raven-data:/data \
+  review-raven:dev
 ```
 
 Optional environment variables (all have defaults):
@@ -81,7 +81,7 @@ Optional environment variables (all have defaults):
 MCP_PORT=8083
 BIND_ADDR=127.0.0.1   # Use 0.0.0.0 in Docker so mcp-gateway (other container) can reach this server
 LOG_LEVEL=info
-SQLITE_PATH=/data/copilot-review.db
+SQLITE_PATH=/data/review-raven.db
 IN_PROGRESS_THRESHOLD_SEC=30
 MCP_SESSION_TIMEOUT_MIN=0
 ```
@@ -107,27 +107,27 @@ Expected response:
 ### View logs
 
 ```bash
-docker logs -f copilot-review-mcp
+docker logs -f review-raven
 ```
 
 ### Stop, start again, and remove
 
 ```bash
-docker stop copilot-review-mcp
-docker start copilot-review-mcp
-docker rm -f copilot-review-mcp
+docker stop review-raven
+docker start review-raven
+docker rm -f review-raven
 ```
 
 The named volume keeps the SQLite watch-state database:
 
 ```bash
-docker volume ls --filter name=copilot-review-data
+docker volume ls --filter name=review-raven-data
 ```
 
 Remove it only when you intentionally want to delete local state:
 
 ```bash
-docker volume rm copilot-review-data
+docker volume rm review-raven-data
 ```
 
 ## 3. Configure an MCP client
@@ -139,7 +139,7 @@ Point the client at your mcp-gateway URL:
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "type": "http",
       "url": "https://your-gateway-url/mcp"
     }
@@ -156,7 +156,7 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
@@ -204,14 +204,14 @@ After copying, edit the placeholders in the skill if your client exposes differe
 
 | Placeholder | Meaning |
 |---|---|
-| `{CRM}` | `copilot-review-mcp` tools |
+| `{CRM}` | `review-raven` tools |
 | `{GH}` | GitHub MCP tools used for comments, CI, and PR operations |
 
 ## 5. Basic review-cycle usage
 
 Prerequisites:
 
-- `copilot-review-mcp` is running and accessible via mcp-gateway.
+- `review-raven` is running and accessible via mcp-gateway.
 - A GitHub MCP server or GitHub connector is also available.
 - The current repository has an open PR.
 
@@ -237,7 +237,7 @@ Merging remains a separate explicit user decision.
 
 ### `missing_proxy_identity` (401)
 
-The request reached `copilot-review-mcp` without going through mcp-gateway, or the gateway is not configured to inject `X-Authenticated-User`. Ensure all traffic passes through mcp-gateway.
+The request reached `review-raven` without going through mcp-gateway, or the gateway is not configured to inject `X-Authenticated-User`. Ensure all traffic passes through mcp-gateway.
 
 ### `session_user_mismatch`
 
@@ -248,7 +248,7 @@ The same MCP session ID was reused with a different GitHub login. Clear the MCP 
 Check logs:
 
 ```bash
-docker logs copilot-review-mcp
+docker logs review-raven
 ```
 
 Common causes are a port already in use or a bad `SQLITE_PATH`.

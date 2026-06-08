@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 // GetStatusInput is the input schema for get_copilot_review_status.

@@ -8,9 +8,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/middleware"
 )
 
 type githubClientProvider func(context.Context, *mcp.CallToolRequest) (*ghclient.Client, error)

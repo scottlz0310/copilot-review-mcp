@@ -37,7 +37,7 @@ func Auth() func(http.Handler) http.Handler {
 
 func writeUnauthorized(w http.ResponseWriter, errCode string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("WWW-Authenticate", `Bearer realm="copilot-review-mcp"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="review-raven"`)
 	w.WriteHeader(http.StatusUnauthorized)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": errCode})
 }

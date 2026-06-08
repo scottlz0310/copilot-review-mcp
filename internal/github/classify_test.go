@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/go-github/v85/github"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
 )
 
 // fakeResponse constructs a minimal http.Response with the given status code for

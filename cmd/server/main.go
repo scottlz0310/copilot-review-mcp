@@ -14,11 +14,11 @@ import (
 
 	"golang.org/x/oauth2"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
-	"github.com/scottlz0310/copilot-review-mcp/internal/tools"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/store"
+	"github.com/scottlz0310/review-raven/internal/tools"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 func main() {
@@ -42,11 +42,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// OAuth endpoints have been removed in v3.0.0; return 410 Gone with migration guidance.
+	// OAuth endpoints are not supported; return 410 Gone with migration guidance.
 	goneHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
-		_, _ = fmt.Fprintln(w, `{"error":"oauth_removed","detail":"Standalone OAuth was removed in v3.0.0. Connect via mcp-gateway instead. See https://github.com/scottlz0310/copilot-review-mcp#readme"}`)
+		_, _ = fmt.Fprintln(w, `{"error":"oauth_removed","detail":"Standalone OAuth is not supported in review-raven. Connect via mcp-gateway instead. See https://github.com/scottlz0310/review-raven#readme"}`)
 	}
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
 	mux.HandleFunc("GET /authorize", goneHandler)
@@ -74,7 +74,7 @@ func main() {
 	mux.Handle("/mcp/", authMiddleware(mcpHandler))
 
 	addr := net.JoinHostPort(cfg.bindAddr, cfg.port)
-	slog.Info("copilot-review-mcp starting", "addr", addr)
+	slog.Info("review-raven starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
 	// as a blocking fallback and may occupy one tool call for up to 30 minutes.
 	server := &http.Server{
@@ -104,8 +104,16 @@ type config struct {
 }
 
 func loadConfig() config {
-	gatewayURL := strings.TrimSpace(os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_URL"))
-	gatewaySecret := strings.TrimSpace(os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET"))
+	// REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET are preferred.
+	// Legacy COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET are read as fallback for backward compatibility.
+	gatewayURL := strings.TrimSpace(coalesce(
+		os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_URL"),
+		os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_URL"),
+	))
+	gatewaySecret := strings.TrimSpace(coalesce(
+		os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET"),
+		os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET"),
+	))
 	// Fail-closed: both env vars must be set together. Configuring only one is
 	// almost always a deployment mistake (e.g., secret leaked but URL forgotten),
 	// so refuse to start rather than silently falling back to static tokens.
@@ -116,7 +124,7 @@ func loadConfig() config {
 	// rather than the intended JSON handler + LOG_LEVEL.
 	if (gatewayURL == "") != (gatewaySecret == "") {
 		fmt.Fprintf(os.Stderr,
-			"copilot-review-mcp: phase B gateway config is incomplete: set both COPILOT_REVIEW_GATEWAY_INTERNAL_URL and COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET, or neither (url_set=%t secret_set=%t)\n",
+			"review-raven: phase B gateway config is incomplete: set both REVIEW_RAVEN_GATEWAY_INTERNAL_URL and REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET, or neither (url_set=%t secret_set=%t)\n",
 			gatewayURL != "", gatewaySecret != "")
 		os.Exit(1)
 	}
@@ -125,7 +133,7 @@ func loadConfig() config {
 	// every watch to static tokens at runtime.
 	if gatewayURL != "" {
 		if err := ghclient.ValidateGatewayEndpoint(gatewayURL, gatewaySecret); err != nil {
-			fmt.Fprintf(os.Stderr, "copilot-review-mcp: phase B gateway config rejected at startup: %v\n", err)
+			fmt.Fprintf(os.Stderr, "review-raven: phase B gateway config rejected at startup: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -133,11 +141,20 @@ func loadConfig() config {
 		port:                   getEnv("MCP_PORT", "8083"),
 		bindAddr:               getEnv("BIND_ADDR", "127.0.0.1"),
 		logLevel:               getEnv("LOG_LEVEL", "info"),
-		sqlitePath:             getEnv("SQLITE_PATH", "/data/copilot-review.db"),
+		sqlitePath:             getEnv("SQLITE_PATH", "/data/review-raven.db"),
 		inProgressThresholdSec: getEnvInt("IN_PROGRESS_THRESHOLD_SEC", 30),
 		gatewayInternalURL:     gatewayURL,
 		gatewayInternalSecret:  gatewaySecret,
 	}
+}
+
+func coalesce(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // buildGatewayClientFactory returns a watch ClientFactory that resolves the

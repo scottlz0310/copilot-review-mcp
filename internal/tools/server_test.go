@@ -15,9 +15,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/store"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {

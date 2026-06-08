@@ -21,7 +21,7 @@ import (
 // PR-A purposefully keeps these as opaque sentinels so callers can use
 // errors.Is. The mapping to higher-level failure reasons (e.g.
 // FailureReasonAuthExpired) and recovery hints is deferred to PR-B per
-// the design in scottlz0310/copilot-review-mcp#29.
+// the design in scottlz0310/review-raven#29.
 var (
 	// ErrGatewaySubjectGone indicates the gateway no longer has a cached
 	// token record for the subject (HTTP 404). This is permanent until the
