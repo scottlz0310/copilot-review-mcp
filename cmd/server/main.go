@@ -104,16 +104,8 @@ type config struct {
 }
 
 func loadConfig() config {
-	// REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET are preferred.
-	// Legacy COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET are read as fallback for backward compatibility.
-	gatewayURL := strings.TrimSpace(coalesce(
-		os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_URL"),
-		os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_URL"),
-	))
-	gatewaySecret := strings.TrimSpace(coalesce(
-		os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET"),
-		os.Getenv("COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET"),
-	))
+	gatewayURL := strings.TrimSpace(os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_URL"))
+	gatewaySecret := strings.TrimSpace(os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET"))
 	// Fail-closed: both env vars must be set together. Configuring only one is
 	// almost always a deployment mistake (e.g., secret leaked but URL forgotten),
 	// so refuse to start rather than silently falling back to static tokens.
@@ -146,15 +138,6 @@ func loadConfig() config {
 		gatewayInternalURL:     gatewayURL,
 		gatewayInternalSecret:  gatewaySecret,
 	}
-}
-
-func coalesce(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // buildGatewayClientFactory returns a watch ClientFactory that resolves the
