@@ -16,8 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 // newGitHubAPIMock builds a minimal httptest.Server that serves the three GitHub

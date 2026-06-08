@@ -1,0 +1,69 @@
+# Architecture
+
+[日本語](architecture.ja.md)
+
+## Position of review-raven
+
+`review-raven` is the **reviewed-side** MCP server in the review infrastructure. It provides operations for the side that *receives* a review and works on fixes.
+
+This repository does not implement reviewer-side operations (review posting, webhook reception, queue management). Those belong to [thread-owl](https://github.com/scottlz0310/thread-owl).
+
+## Five-component review infrastructure
+
+| # | Repository | Role | Responsibility |
+|---|-----------|------|----------------|
+| 1 | **[thread-owl](https://github.com/scottlz0310/thread-owl)** | reviewer side | GitHub App bot. Posts reviews and in-line comments from a consistent account |
+| 2 | **review-raven** (this repo) | reviewed side | MCP server. Thread read, reply, resolve/unresolve, re-review request |
+| 3 | **[mcp-resource-subscriber](https://github.com/scottlz0310/mcp-resource-subscriber)** | status subscription bridge | Called from both review-raven and thread-owl via skill. Subscribes to `resources/updated` notifications |
+| 4 | **[mcp-gateway](https://github.com/scottlz0310/mcp-gateway)** | MCP reverse proxy | Routing and authentication boundary for MCP servers |
+| 5 | **[Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker)** | container orchestration | Container management, gateway route generation, CLI agent config automation |
+
+## Responsibility of review-raven
+
+- Read PR review threads
+- Extract and classify unresolved threads
+- Reply to review comments
+- Resolve / unresolve review threads
+- Request re-review after fixes are applied
+- Handle any review thread regardless of provider (Copilot review, human reviewer, bot reviewer)
+
+Copilot review is one acquisition provider, not the permanent core concept of this repository.
+
+## Boundary with thread-owl
+
+| review-raven | thread-owl |
+|---|---|
+| Reviewed-side operations | Reviewer-side operations |
+| Thread read / reply / resolve | Review posting |
+| Re-review request | Webhook reception |
+| — | Review candidate queue |
+| — | `queue://review/queue` MCP resource |
+
+Do not add reviewer-side queue / webhook / GitHub App review posting to this repository. Do not add reviewed-side thread resolve / re-review request workflows to thread-owl.
+
+## Boundary with mcp-resource-subscriber
+
+`mcp-resource-subscriber` is an external CLI / bridge that connects MCP resource subscription to agent workflows. review-raven does not embed a long-lived subscription client or watcher CLI. When needed, agent skills call `mcp-resource-subscriber` externally.
+
+## MCP server details
+
+- **Server name**: `review-raven`
+- **MCP client key**: `review-raven` (tool prefix: `mcp__review-raven__*`)
+- **Resource URI scheme**: `review-raven://watch/{watch_id}`
+- **Auth**: gateway-delegated via mcp-gateway (`X-Authenticated-User` + `Authorization` headers)
+
+## Relation to pr-review-subscribe skill
+
+The `pr-review-subscribe` skill is the upper-level workflow integrating review acquisition, thread handling, and fix workflow. review-raven serves as the reviewed-side MCP provider within that skill.
+
+## Future direction
+
+As [github-mcp-server](https://github.com/github/github-mcp-server) matures, some MCP tools currently provided by review-raven may become redundant. If github-mcp-server covers the full set, review-raven may eventually become a skill-only repository. New MCP tools should be evaluated against github-mcp-server coverage before being added here.
+
+## Related issues
+
+- [review-raven #63](https://github.com/scottlz0310/review-raven/issues/63) — Responsibility boundary definition (this document)
+- [thread-owl #75](https://github.com/scottlz0310/thread-owl/issues/75) — Thread Owl responsibility boundary
+- [mcp-resource-subscriber #86](https://github.com/scottlz0310/mcp-resource-subscriber/issues/86) — `--json` output mode
+- [mcp-gateway #92](https://github.com/scottlz0310/mcp-gateway/issues/92) — MCP reverse proxy / auth boundary
+- [Mcp-Docker #158](https://github.com/scottlz0310/Mcp-Docker/issues/158) — Container orchestration

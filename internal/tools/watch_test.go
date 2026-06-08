@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/store"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 func TestGetWatchStatusHandlerScopesWatchIDByLogin(t *testing.T) {
@@ -291,11 +291,11 @@ func TestParseWatchIDFromURI(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{uri: "copilot-review://watch/cw_123_1", want: "cw_123_1"},
-		{uri: "copilot-review://watch/abc", want: "abc"},
-		{uri: "copilot-review://watch/", wantErr: true},
-		{uri: "copilot-review://watch/a/b", wantErr: true},
-		{uri: "copilot-review://watch/a?x=1", wantErr: true},
+		{uri: "review-raven://watch/cw_123_1", want: "cw_123_1"},
+		{uri: "review-raven://watch/abc", want: "abc"},
+		{uri: "review-raven://watch/", wantErr: true},
+		{uri: "review-raven://watch/a/b", wantErr: true},
+		{uri: "review-raven://watch/a?x=1", wantErr: true},
 		{uri: "other://watch/abc", wantErr: true},
 	}
 	for _, tc := range tests {
@@ -411,8 +411,8 @@ func TestWatchResourceHandlerReturnsJSON(t *testing.T) {
 	RegisterWatchResources(srv, manager)
 
 	uri := *started.ResourceURI
-	if !strings.HasPrefix(uri, "copilot-review://watch/") {
-		t.Fatalf("ResourceURI = %q, want copilot-review://watch/ prefix", uri)
+	if !strings.HasPrefix(uri, "review-raven://watch/") {
+		t.Fatalf("ResourceURI = %q, want review-raven://watch/ prefix", uri)
 	}
 
 	// Connect server with "alice" as the authenticated login.

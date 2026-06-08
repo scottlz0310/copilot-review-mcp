@@ -1,4 +1,4 @@
-# copilot-review-mcp
+# review-raven
 
 [日本語](README.ja.md)
 
@@ -32,28 +32,28 @@ An MCP (Model Context Protocol) server that manages GitHub Copilot PR review cyc
 | `reply_and_resolve_review_thread` | Reply then resolve in sequence |
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 
-See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md).
+See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md). For the architecture and responsibility boundaries with Thread Owl and mcp-resource-subscriber, see [docs/architecture.md](docs/architecture.md).
 
 ## Quick Start (Docker + mcp-gateway)
 
 This server requires [mcp-gateway](https://github.com/mcp-b/mcp-gateway) to handle authentication.
 
 ```bash
-# Start copilot-review-mcp (internal, not exposed directly)
+# Start review-raven (internal, not exposed directly)
 docker run --rm -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  ghcr.io/scottlz0310/copilot-review-mcp:latest
+  -v review-raven-data:/data \
+  ghcr.io/scottlz0310/review-raven:latest
 ```
 
-Configure mcp-gateway to proxy the internal address of this server as seen **from the gateway** (e.g., `http://copilot-review-mcp:8083` on a shared Docker network, or `http://host.docker.internal:8083` on Docker Desktop). See [mcp-gateway docs](https://github.com/mcp-b/mcp-gateway).
+Configure mcp-gateway to proxy the internal address of this server as seen **from the gateway** (e.g., `http://review-raven:8083` on a shared Docker network, or `http://host.docker.internal:8083` on Docker Desktop). See [mcp-gateway docs](https://github.com/mcp-b/mcp-gateway).
 
 **For stdio clients** (Claude Desktop, etc.) use [mcp-remote](https://github.com/geelen/mcp-remote):
 
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
@@ -70,11 +70,11 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `MCP_PORT` | | `8083` | Listen port |
 | `BIND_ADDR` | | `127.0.0.1` | Bind address. Use `0.0.0.0` in Docker so the container is reachable from mcp-gateway on the same network |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
-| `SQLITE_PATH` | | `/data/copilot-review.db` | Path to the watch-state database |
+| `SQLITE_PATH` | | `/data/review-raven.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
 | `MCP_SESSION_TIMEOUT_MIN` | | `0` | Idle timeout for Streamable HTTP sessions (minutes). After this period without any HTTP request from a client, the session is closed and subsequent requests with the stale `Mcp-Session-Id` get `404 session not found`. The default `0` disables idle eviction so long-lived clients (Claude Code / IDE / `mcp-gateway`) do not hit the failure mode in #14. Trade-off: orphaned sessions (clients that disappear without sending `DELETE`) remain in memory until process shutdown — set a positive value (e.g. `1440` for 24h) if memory growth is a concern. |
-| `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` or leave both unset. |
-| `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `COPILOT_REVIEW_GATEWAY_INTERNAL_URL`. |
+| `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` or leave both unset. |
+| `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_URL`. |
 
 **Removed in v3.0.0**: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
 
@@ -87,15 +87,15 @@ Requires Go 1.26+.
 go test ./...
 
 # Build
-go build -o bin/copilot-review-mcp ./cmd/server
+go build -o bin/review-raven ./cmd/server
 
 # Build Docker image
-docker build -t copilot-review-mcp:dev .
+docker build -t review-raven:dev .
 ```
 
 ## History
 
-This repository is a split-out of `services/copilot-review-mcp/` from [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker). Git history was not migrated. Related PRs and Issues from Mcp-Docker (`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92`, etc.) are referenced in the documents under `docs/`.
+This repository is a split-out of `services/review-raven/` from [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker). Git history was not migrated. Related PRs and Issues from Mcp-Docker (`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92`, etc.) are referenced in the documents under `docs/`.
 
 ## License
 

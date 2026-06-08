@@ -89,7 +89,7 @@ if _, err := d.MarkActiveReviewWatchesStale(staleOnOpenMessage); err != nil {
 
 定数:
 ```go
-const staleOnOpenMessage = "watch became stale because the copilot-review-mcp process restarted"
+const staleOnOpenMessage = "watch became stale because the review-raven process restarted"
 ```
 
 `MarkActiveReviewWatchesStale()` は以下の SQL を実行する:
@@ -181,7 +181,7 @@ data, err := client.GetReviewData(callCtx, w.key.owner, ...)
 
 ### 最大リスク: mcp-gateway 側のトークン種別依存
 
-`copilot-review-mcp` 単体では mcp-gateway が何種類のトークンを使うか不可視。
+`review-raven` 単体では mcp-gateway が何種類のトークンを使うか不可視。
 GitHub App installation token のデフォルト有効期限は **1時間**。
 ウォッチの最大継続時間は **2時間**。
 この組み合わせで必然的にトークン失効が発生する。

@@ -1,4 +1,4 @@
-# copilot-review-mcp Watch Tool Flow
+# review-raven Watch Tool Flow
 
 [日本語](watch-tools.ja.md)
 
@@ -47,13 +47,13 @@ Watch tools return `recommended_next_action` and, when relevant, `next_poll_seco
 
 ## Notes
 
-- `resource_uri` is the stable ID of a watch. Read/subscribe is available via the `copilot-review://watch/{watch_id}` scheme (`RegisterWatchResources` / `SubscribeHandler` implemented).
+- `resource_uri` is the stable ID of a watch. Read/subscribe is available via the `review-raven://watch/{watch_id}` scheme (`RegisterWatchResources` / `SubscribeHandler` implemented).
 - Watch state is persisted in SQLite, but the worker itself is memory-only. Active watches become `STALE` after a process restart.
 - List operations return only watches belonging to the same `github_login`.
 
 ## Stateful Session Foundation (#64)
 
-Since #64, the Streamable HTTP transport of `copilot-review-mcp` is treated as stateful, not stateless.
+Since #64, the Streamable HTTP transport of `review-raven` is treated as stateful, not stateless.
 
 - The `Mcp-Session-Id` issued on the first `initialize` is reused by subsequent requests.
 - The MCP server is not recreated per request; a long-lived in-process server holds multiple stateful sessions.

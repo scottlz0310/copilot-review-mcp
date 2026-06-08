@@ -3,7 +3,7 @@ package tools
 import (
 	"testing"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
 )
 
 func TestComputeAllReplied(t *testing.T) {

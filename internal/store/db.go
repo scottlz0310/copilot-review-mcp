@@ -53,7 +53,7 @@ CREATE INDEX idx_review_watch_lookup
     ON review_watch(github_login, owner, repo, pr, updated_at DESC, started_at DESC);
 `
 
-const staleOnOpenMessage = "watch became stale because the copilot-review-mcp process restarted"
+const staleOnOpenMessage = "watch became stale because the review-raven process restarted"
 
 // DB wraps a SQLite database for trigger_log operations.
 type DB struct {

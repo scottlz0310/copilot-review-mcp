@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-github/v85/github"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
+	"github.com/scottlz0310/review-raven/internal/autherr"
 )
 
 // ClassifyGitHubError maps a GitHub API or gateway error to a structured *autherr.AuthError.

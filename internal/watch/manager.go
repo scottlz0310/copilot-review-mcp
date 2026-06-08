@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/go-github/v85/github"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 // ErrManagerClosed is returned by Start when the Manager has been closed.
@@ -96,7 +96,7 @@ type Options struct {
 	Now              func() time.Time
 	// NotifyResourceUpdated is called asynchronously whenever a watch transitions
 	// state. The uri argument is the resource URI of the changed watch
-	// (e.g. "copilot-review://watch/{id}"). It is safe to call srv.ResourceUpdated
+	// (e.g. "review-raven://watch/{id}"). It is safe to call srv.ResourceUpdated
 	// from this callback.
 	NotifyResourceUpdated func(uri string)
 	// UpstreamFailureThreshold is the number of consecutive ErrGatewayUpstreamFailure
@@ -1178,7 +1178,7 @@ func formatRateLimitMessage(remaining int, reset time.Time) string {
 }
 
 func resourceURIForWatch(watchID string) string {
-	return fmt.Sprintf("copilot-review://watch/%s", watchID)
+	return fmt.Sprintf("review-raven://watch/%s", watchID)
 }
 
 // IsRateLimitHTTPError reports whether err is a GitHub rate-limit HTTP failure.

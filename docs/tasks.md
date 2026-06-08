@@ -1,4 +1,4 @@
-# copilot-review-mcp 改善タスク一覧
+# review-raven 改善タスク一覧
 
 > **Archived.** This document was written against the legacy `scottlz0310/Mcp-Docker` monorepo.
 > All issues referenced here (#55–#58 in Mcp-Docker, #63–#68 in Mcp-Docker) have since been
@@ -13,7 +13,7 @@
 `wait_for_copilot_review` を中心とした現行の blocking wait モデルを、
 LLM 向けの async watch + notification モデルへ置き換える大きめの redesign を別系統で起票した。
 
-- [#63](https://github.com/scottlz0310/Mcp-Docker/issues/63): epic(copilot-review-mcp): async watch + notification ベースへ再設計し blocking wait を主経路から外す
+- [#63](https://github.com/scottlz0310/Mcp-Docker/issues/63): epic(review-raven): async watch + notification ベースへ再設計し blocking wait を主経路から外す
 - [#68](https://github.com/scottlz0310/Mcp-Docker/issues/68): memory-only watch manager を先行導入し active watch を idempotent に扱う
 - [#65](https://github.com/scottlz0310/Mcp-Docker/issues/65): SQLite 永続化で review_watch state を追加する
 - [#67](https://github.com/scottlz0310/Mcp-Docker/issues/67): watch 系ツールを追加し `wait_for_copilot_review` を legacy 化する

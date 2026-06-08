@@ -9,20 +9,32 @@
 
 ## [Unreleased]
 
+### 変更
+
+- **リポジトリ名を `copilot-review-mcp` から `review-raven` へ改名** ([Issue #63](https://github.com/scottlz0310/review-raven/issues/63)):
+  - Go module path 変更: `github.com/scottlz0310/copilot-review-mcp` → `github.com/scottlz0310/review-raven`
+  - MCP server 実装名変更: `"copilot-review-mcp"` → `"review-raven"`
+  - Resource URI スキーム変更: `copilot-review://watch/{id}` → `review-raven://watch/{id}`
+  - MCP client 設定キー変更: `"copilot-review"` → `"review-raven"`（tool prefix: `mcp__review-raven__*`）
+  - 環境変数名変更: `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` → `REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET`（旧名は後方互換 fallback として引き続き読まれる）
+  - SQLite デフォルトパス変更: `/data/copilot-review.db` → `/data/review-raven.db`（`SQLITE_PATH` 環境変数で上書き可能）
+  - Docker イメージ・コンテナ・ボリューム名変更: `copilot-review-mcp` → `review-raven`、`copilot-review-data` → `review-raven-data`
+  - `docs/architecture.md` を新規追加: review される側 MCP server としての位置づけと、Thread Owl・mcp-resource-subscriber との責務境界を文書化
+
 ## [3.2.0] - 2026-05-18
 
 ### 追加
 
-- **Phase B 委譲バックグラウンドアクセス — gateway 統合テスト (PR-C)** — [Issue #40](https://github.com/scottlz0310/copilot-review-mcp/issues/40)（[Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29) の一部）:
+- **Phase B 委譲バックグラウンドアクセス — gateway 統合テスト (PR-C)** — [Issue #40](https://github.com/scottlz0310/review-raven/issues/40)（[Issue #29](https://github.com/scottlz0310/review-raven/issues/29) の一部）:
   - `internal/watch/gateway_integration_test.go` で `gatewayTokenSource → oauth2.ReuseTokenSource → oauth2.Transport → *ghclient.Client → watch.Manager.pollOnce` の経路全体を fake `POST /internal/v1/whoami` と最小限の fake GitHub REST サーバで end-to-end 実行。production 配線 (`cmd/server/main.go` の `buildGatewayClientFactory`) と同じ組み立てを再現する。
   - 6 シナリオを網羅: happy path (200 → `COMPLETED`)、subject gone (404 → `FAILED`/`AUTH_EXPIRED` + re-seed hint)、rotation_failed (502/rotation_failed → `FAILED`/`AUTH_EXPIRED` + refresh-rejected hint)、upstream_failure 単発で `WATCHING` 維持、upstream_failure 連続で `FAILED`/`AUTH_EXPIRED` + consecutive-polls hint、token rotation が GitHub 側に観測可能 (`oauth2.ReuseTokenSource` が rotate 後の値を取り直す)。
   - 既存 `manager_test.go` の sentinel error 直接注入とは独立した経路で結線を検証し、factory リファクタ等で chain が壊れた場合に fail-closed する。
-- **Phase B 委譲バックグラウンドアクセス — クライアントコア (PR-A)** — [Issue #29](https://github.com/scottlz0310/copilot-review-mcp/issues/29):
+- **Phase B 委譲バックグラウンドアクセス — クライアントコア (PR-A)** — [Issue #29](https://github.com/scottlz0310/review-raven/issues/29):
   - `internal/github/gateway_token_source.go` — gateway の `POST /internal/v1/whoami` を叩く `oauth2.TokenSource` 実装 `gatewayTokenSource`。コンストラクタで loopback ホスト (`127.0.0.1` / `::1` / `localhost`) を検証。`expires_at` を `oauth2.Token.Expiry` に反映するため `oauth2.ReuseTokenSource` で whoami 呼び出しを抑制可能。
   - Sentinel エラー `ErrGatewaySubjectGone` (404)、`ErrGatewayUnauthorized` (401)、`ErrGatewayLoopbackRequired` (403)、`ErrGatewayUpstreamFailure` (502)、`ErrGatewayBadRequest` (その他 4xx)、`ErrGatewayNonLoopback`。`FailureReasonAuthExpired` / recovery hint へのマッピングは PR-B に延期。
   - `internal/github/client.go` — 動的トークン用 `NewClientWithTokenSource(ctx, ts, threshold)` を追加（`invalidatingTransport` は付与せず、PR-B で対応）。
   - `internal/tools/server.go` — `BuilderOptions{GatewayClientFactory}` と `BuildStreamableHandlerWithOptions` を追加。既存 `BuildStreamableHandler(db, threshold)` のシグネチャは維持。
-  - `cmd/server/main.go` — `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` と `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` の両方を設定したときのみ opt-in。未設定時は従来通り `oauth2.StaticTokenSource`（動作変更なし）。片方のみ設定された場合は fail-closed で起動を中断。
+  - `cmd/server/main.go` — `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` と `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` の両方を設定したときのみ opt-in。未設定時は従来通り `oauth2.StaticTokenSource`（動作変更なし）。片方のみ設定された場合は fail-closed で起動を中断。
   - gateway に送る **subject** は認証済み GitHub login（gateway 仕様に準拠）。
   - **制約**: PoC のためクライアントと gateway は同一ホスト (loopback) 必須。Docker Compose の複数コンテナ構成は PR-A では非対応。
 
@@ -40,7 +52,7 @@
 
 ### 追加
 
-- **5 つの新しい構造化エラー型** を `internal/autherr` に追加し、[Issue #21](https://github.com/scottlz0310/copilot-review-mcp/issues/21) を完結:
+- **5 つの新しい構造化エラー型** を `internal/autherr` に追加し、[Issue #21](https://github.com/scottlz0310/review-raven/issues/21) を完結:
   - `PERMISSION_DENIED` — HTTP 403 レスポンス（rate limit 以外）
   - `RATE_LIMITED` — プライマリ rate limit（`*github.RateLimitError`）とセカンダリ/abuse rate limit（`*github.AbuseRateLimitError`）。`retryable` と `safe_to_continue` は状況依存
   - `NOT_FOUND` — HTTP 404 レスポンス
@@ -51,7 +63,7 @@
 
 ### 変更
 
-- skill テンプレート（`docs/skills/`）の MCP サーバーキーを `copilot-review`（旧 `copilot-review-mcp`）と `github`（旧 `github-mcp-server-docker`）に統一。mcp-docker / mcp-gateway のデフォルト設定に合わせた規約変更（#23）。usage docs（`docs/usage.md`、`docs/usage.ja.md`）も同規約に合わせて更新。
+- skill テンプレート（`docs/skills/`）の MCP サーバーキーを `copilot-review`（旧 `review-raven`）と `github`（旧 `github-mcp-server-docker`）に統一。mcp-docker / mcp-gateway のデフォルト設定に合わせた規約変更（#23）。usage docs（`docs/usage.md`、`docs/usage.ja.md`）も同規約に合わせて更新。
 
 ## [3.0.0] - 2026-05-06
 
@@ -86,7 +98,7 @@
 
 ### 追加
 
-- [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/copilot-review-mcp/` を独立リポジトリへ分離
+- [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/review-raven/` を独立リポジトリへ分離
 - Copilot review workflow 向けの OAuth 対応 Streamable HTTP MCP サーバーを追加
 - async watch ツール、review thread の reply/resolve ツール、`pr-review-cycle` skill テンプレートを追加
 - SQLite による watch state 永続化と、プロセス再起動後の stale watch 検知を追加
@@ -95,11 +107,11 @@
 
 ### 補足
 
-- この独立リポジトリでは、Mcp-Docker 時代の `copilot-review-mcp` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
+- この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.2.0...HEAD
-[3.2.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.1.0...v3.2.0
-[3.1.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v3.0.0...v3.1.0
-[3.0.0]: https://github.com/scottlz0310/copilot-review-mcp/compare/v2.5.0...v3.0.0
-[2.5.0]: https://github.com/scottlz0310/copilot-review-mcp/releases/tag/v2.5.0
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/scottlz0310/review-raven/compare/v3.1.0...v3.2.0
+[3.1.0]: https://github.com/scottlz0310/review-raven/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/scottlz0310/review-raven/compare/v2.5.0...v3.0.0
+[2.5.0]: https://github.com/scottlz0310/review-raven/releases/tag/v2.5.0

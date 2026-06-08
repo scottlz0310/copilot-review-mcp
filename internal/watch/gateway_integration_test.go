@@ -30,7 +30,7 @@ import (
 	"github.com/google/go-github/v85/github"
 	"golang.org/x/oauth2"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
 )
 
 const (

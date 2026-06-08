@@ -17,10 +17,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/store"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 // errorProvider returns a githubClientProvider that always returns the given error.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
+	"github.com/scottlz0310/review-raven/internal/autherr"
 )
 
 func TestAuthErrorImplementsError(t *testing.T) {

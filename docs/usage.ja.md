@@ -2,7 +2,7 @@
 
 [English](usage.md)
 
-このドキュメントでは、`copilot-review-mcp` を MCP サーバーとして動かすための基本設定をまとめる。
+このドキュメントでは、`review-raven` を MCP サーバーとして動かすための基本設定をまとめる。
 
 - アーキテクチャ概要（mcp-gateway 必須）
 - Docker コンテナの起動、終了、ログ確認
@@ -24,33 +24,33 @@ mcp-gateway  ──►  X-Authenticated-User + Authorization ヘッダーを注�
     │
     │  HTTP（内部通信のみ）
     ▼
-copilot-review-mcp  :8083
+review-raven  :8083
     │
     │  SQLite
     ▼
-/data/copilot-review.db
+/data/review-raven.db
 ```
 
-`copilot-review-mcp` は mcp-gateway が注入したヘッダーを信頼し、OAuth を直接行わない。
+`review-raven` は mcp-gateway が注入したヘッダーを信頼し、OAuth を直接行わない。
 
 ## 1. mcp-gateway をセットアップする
 
 [mcp-gateway のドキュメント](https://github.com/mcp-b/mcp-gateway) に従ってデプロイ・設定する。
 
-gateway の upstream ルートのひとつを、**gateway から到達可能**なアドレスに向ける（例：同一 Docker ネットワーク上では `http://copilot-review-mcp:8083`、Docker Desktop では `http://host.docker.internal:8083`）。
+gateway の upstream ルートのひとつを、**gateway から到達可能**なアドレスに向ける（例：同一 Docker ネットワーク上では `http://review-raven:8083`、Docker Desktop では `http://host.docker.internal:8083`）。
 
-## 2. Docker で copilot-review-mcp を起動する
+## 2. Docker で review-raven を起動する
 
 ### 公開済みイメージを pull
 
 ```bash
-docker pull ghcr.io/scottlz0310/copilot-review-mcp:latest
+docker pull ghcr.io/scottlz0310/review-raven:latest
 ```
 
 ### ローカルで build
 
 ```bash
-docker build -t copilot-review-mcp:dev .
+docker build -t review-raven:dev .
 ```
 
 ### コンテナを起動
@@ -58,21 +58,21 @@ docker build -t copilot-review-mcp:dev .
 公開済みイメージ:
 
 ```bash
-docker run -d --name copilot-review-mcp \
+docker run -d --name review-raven \
   -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  ghcr.io/scottlz0310/copilot-review-mcp:latest
+  -v review-raven-data:/data \
+  ghcr.io/scottlz0310/review-raven:latest
 ```
 
 ローカル build イメージ:
 
 ```bash
-docker run -d --name copilot-review-mcp \
+docker run -d --name review-raven \
   -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  copilot-review-mcp:dev
+  -v review-raven-data:/data \
+  review-raven:dev
 ```
 
 任意の環境変数（すべてデフォルト値あり）:
@@ -81,7 +81,7 @@ docker run -d --name copilot-review-mcp \
 MCP_PORT=8083
 BIND_ADDR=127.0.0.1   # Docker で別コンテナ（mcp-gateway 等）から到達させる場合は 0.0.0.0 を指定
 LOG_LEVEL=info
-SQLITE_PATH=/data/copilot-review.db
+SQLITE_PATH=/data/review-raven.db
 IN_PROGRESS_THRESHOLD_SEC=30
 MCP_SESSION_TIMEOUT_MIN=0
 ```
@@ -107,27 +107,27 @@ Invoke-RestMethod http://127.0.0.1:8083/health
 ### ログ確認
 
 ```bash
-docker logs -f copilot-review-mcp
+docker logs -f review-raven
 ```
 
 ### 停止、再起動、削除
 
 ```bash
-docker stop copilot-review-mcp
-docker start copilot-review-mcp
-docker rm -f copilot-review-mcp
+docker stop review-raven
+docker start review-raven
+docker rm -f review-raven
 ```
 
 named volume には SQLite の watch state DB が残る。
 
 ```bash
-docker volume ls --filter name=copilot-review-data
+docker volume ls --filter name=review-raven-data
 ```
 
 ローカル状態を削除したい場合だけ volume を削除する。
 
 ```bash
-docker volume rm copilot-review-data
+docker volume rm review-raven-data
 ```
 
 ## 3. MCP クライアントを設定する
@@ -139,7 +139,7 @@ mcp-gateway の URL をクライアントに登録する:
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "type": "http",
       "url": "https://your-gateway-url/mcp"
     }
@@ -156,7 +156,7 @@ mcp-gateway の URL をクライアントに登録する:
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
@@ -204,14 +204,14 @@ cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
 
 | プレースホルダー | 意味 |
 |---|---|
-| `{CRM}` | `copilot-review-mcp` のツール |
+| `{CRM}` | `review-raven` のツール |
 | `{GH}` | コメント、CI、PR 操作に使う GitHub MCP ツール |
 
 ## 5. 基本的な review cycle の使い方
 
 前提:
 
-- `copilot-review-mcp` が起動し、mcp-gateway 経由で接続できる。
+- `review-raven` が起動し、mcp-gateway 経由で接続できる。
 - GitHub MCP サーバーまたは GitHub connector も利用できる。
 - 対象リポジトリに open PR がある。
 
@@ -237,7 +237,7 @@ skill は以下を行う。
 
 ### `missing_proxy_identity`（401）
 
-リクエストが mcp-gateway を経由せずに `copilot-review-mcp` に届いた、または gateway が `X-Authenticated-User` を注入するよう設定されていない。すべてのトラフィックが mcp-gateway を通るよう確認する。
+リクエストが mcp-gateway を経由せずに `review-raven` に届いた、または gateway が `X-Authenticated-User` を注入するよう設定されていない。すべてのトラフィックが mcp-gateway を通るよう確認する。
 
 ### `session_user_mismatch`
 
@@ -248,7 +248,7 @@ skill は以下を行う。
 ログを確認する。
 
 ```bash
-docker logs copilot-review-mcp
+docker logs review-raven
 ```
 
 よくある原因は port の競合または `SQLITE_PATH` の誤り。

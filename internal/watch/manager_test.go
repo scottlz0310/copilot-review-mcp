@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/go-github/v85/github"
 
-	ghclient "github.com/scottlz0310/copilot-review-mcp/internal/github"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 func TestManagerStartReusesActiveWatch(t *testing.T) {

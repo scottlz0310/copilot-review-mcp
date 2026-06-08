@@ -1,8 +1,8 @@
-# copilot-review-mcp 非同期 Watch 再設計
+# review-raven 非同期 Watch 再設計
 
 **作成日**: 2026-04-22  
 **ステータス**: Draft  
-**対象**: `services/copilot-review-mcp`
+**対象**: `services/review-raven`
 
 ---
 
@@ -119,7 +119,7 @@ watch ごとに resource URI を持たせる。
 例:
 
 ```text
-copilot-review://watch/{watch_id}
+review-raven://watch/{watch_id}
 ```
 
 この resource は `resources/read` で watch 状態を返し、状態変化時には
@@ -286,7 +286,7 @@ watch 自体の状態は review status と分ける。
   "watch_status": "WATCHING",
   "review_status": "PENDING",
   "terminal": false,
-  "resource_uri": "copilot-review://watch/cw_01H...",
+  "resource_uri": "review-raven://watch/cw_01H...",
   "recommended_next_action": "POLL_AFTER",
   "next_poll_seconds": 90
 }
@@ -462,7 +462,7 @@ description と README で明示しないと旧 blocking path に流れやすい
 ## 13. 補足
 
 この redesign は「長時間ブロックする wait ツールを改善する」というより、
-`copilot-review-mcp` を LLM 向けの async watch サービスへ再定義する変更である。
+`review-raven` を LLM 向けの async watch サービスへ再定義する変更である。
 
 したがって、局所修正ではなく、
 
@@ -479,9 +479,9 @@ description と README で明示しないと旧 blocking path に流れやすい
 
 ## 14. Issue 分解
 
-- Epic: [#63](https://github.com/scottlz0310/Mcp-Docker/issues/63) `epic(copilot-review-mcp): async watch + notification ベースへ再設計し blocking wait を主経路から外す`
-- Phase 1a / memory-only watch: [#68](https://github.com/scottlz0310/Mcp-Docker/issues/68) `feat(copilot-review-mcp): memory-only watch manager を先行導入し active watch を idempotent に扱う`
-- Phase 1b / persistence: [#65](https://github.com/scottlz0310/Mcp-Docker/issues/65) `feat(copilot-review-mcp): SQLite 永続化で review_watch state を追加する`
-- Phase 2 / tool UX + migration: [#67](https://github.com/scottlz0310/Mcp-Docker/issues/67) `feat(copilot-review-mcp): watch 系ツールを追加し \`wait_for_copilot_review\` を legacy 化する`
-- Phase 3 / stateful foundation: [#64](https://github.com/scottlz0310/Mcp-Docker/issues/64) `refactor(copilot-review-mcp): Streamable HTTP を stateful session 化し async notification の基盤を作る`
-- Phase 4 / resources: [#66](https://github.com/scottlz0310/Mcp-Docker/issues/66) `feat(copilot-review-mcp): watch resource と resources/updated 通知を追加する`
+- Epic: [#63](https://github.com/scottlz0310/Mcp-Docker/issues/63) `epic(review-raven): async watch + notification ベースへ再設計し blocking wait を主経路から外す`
+- Phase 1a / memory-only watch: [#68](https://github.com/scottlz0310/Mcp-Docker/issues/68) `feat(review-raven): memory-only watch manager を先行導入し active watch を idempotent に扱う`
+- Phase 1b / persistence: [#65](https://github.com/scottlz0310/Mcp-Docker/issues/65) `feat(review-raven): SQLite 永続化で review_watch state を追加する`
+- Phase 2 / tool UX + migration: [#67](https://github.com/scottlz0310/Mcp-Docker/issues/67) `feat(review-raven): watch 系ツールを追加し \`wait_for_copilot_review\` を legacy 化する`
+- Phase 3 / stateful foundation: [#64](https://github.com/scottlz0310/Mcp-Docker/issues/64) `refactor(review-raven): Streamable HTTP を stateful session 化し async notification の基盤を作る`
+- Phase 4 / resources: [#66](https://github.com/scottlz0310/Mcp-Docker/issues/66) `feat(review-raven): watch resource と resources/updated 通知を追加する`

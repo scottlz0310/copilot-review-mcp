@@ -9,9 +9,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/autherr"
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	"github.com/scottlz0310/review-raven/internal/autherr"
+	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 const (
@@ -450,12 +450,12 @@ func boolPtr(v bool) *bool {
 }
 
 // RegisterWatchResources registers the watch resource template on the MCP server.
-// Resources are accessible at copilot-review://watch/{watch_id} and return the
+// Resources are accessible at review-raven://watch/{watch_id} and return the
 // full ReviewWatchView JSON of the specified watch. Clients may subscribe to
 // receive resources/updated notifications whenever the watch state changes.
 func RegisterWatchResources(server *mcp.Server, manager *watch.Manager) {
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
-		URITemplate: "copilot-review://watch/{watch_id}",
+		URITemplate: "review-raven://watch/{watch_id}",
 		Name:        "Copilot Review Watch",
 		Description: "Copilot レビュー watch の現在状態を JSON で返す MCP リソース。" +
 			"watch_id を URI に埋め込んでアクセスする。状態変化時に resources/updated 通知が届く。",
@@ -493,9 +493,9 @@ func RegisterWatchResources(server *mcp.Server, manager *watch.Manager) {
 	})
 }
 
-// parseWatchIDFromURI extracts the watch ID from a copilot-review://watch/{id} URI.
+// parseWatchIDFromURI extracts the watch ID from a review-raven://watch/{id} URI.
 func parseWatchIDFromURI(uri string) (string, error) {
-	const prefix = "copilot-review://watch/"
+	const prefix = "review-raven://watch/"
 	if !strings.HasPrefix(uri, prefix) {
 		return "", fmt.Errorf("invalid watch URI: %q", uri)
 	}

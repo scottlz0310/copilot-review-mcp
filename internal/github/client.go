@@ -138,7 +138,7 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 //
 // invalidatingTransport is not attached here because the "current" token is
 // dynamic — invalidation on 401 is deferred to PR-B per
-// scottlz0310/copilot-review-mcp#29.
+// scottlz0310/review-raven#29.
 func NewClientWithTokenSource(ctx context.Context, ts oauth2.TokenSource, threshold time.Duration) *Client {
 	httpClient := oauth2.NewClient(ctx, ts)
 	return &Client{

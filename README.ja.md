@@ -1,4 +1,4 @@
-# copilot-review-mcp
+# review-raven
 
 [English](README.md)
 
@@ -32,28 +32,28 @@ GitHub Copilot の PR レビューサイクルを管理する MCP（Model Contex
 | `reply_and_resolve_review_thread` | 返信→解決を順次実行 |
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 
-セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。
+セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。アーキテクチャおよび Thread Owl・mcp-resource-subscriber との責務境界は [docs/architecture.ja.md](docs/architecture.ja.md) を参照。
 
 ## クイックスタート（Docker + mcp-gateway）
 
 このサーバーは認証のために [mcp-gateway](https://github.com/mcp-b/mcp-gateway) が必要です。
 
 ```bash
-# copilot-review-mcp を起動（直接公開せずに内部で稼働させる）
+# review-raven を起動（直接公開せずに内部で稼働させる）
 docker run --rm -p 127.0.0.1:8083:8083 \
   -e BIND_ADDR=0.0.0.0 \
-  -v copilot-review-data:/data \
-  ghcr.io/scottlz0310/copilot-review-mcp:latest
+  -v review-raven-data:/data \
+  ghcr.io/scottlz0310/review-raven:latest
 ```
 
-mcp-gateway で、**gateway から到達可能**なこのサーバーの内部アドレスをプロキシするよう設定する（例：Docker ネットワーク上では `http://copilot-review-mcp:8083`、Docker Desktop では `http://host.docker.internal:8083`）。[mcp-gateway ドキュメント](https://github.com/mcp-b/mcp-gateway) 参照。
+mcp-gateway で、**gateway から到達可能**なこのサーバーの内部アドレスをプロキシするよう設定する（例：Docker ネットワーク上では `http://review-raven:8083`、Docker Desktop では `http://host.docker.internal:8083`）。[mcp-gateway ドキュメント](https://github.com/mcp-b/mcp-gateway) 参照。
 
 **stdio クライアント**（Claude Desktop 等）では [mcp-remote](https://github.com/geelen/mcp-remote) を使用：
 
 ```json
 {
   "mcpServers": {
-    "copilot-review": {
+    "review-raven": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://your-gateway-url/mcp"]
     }
@@ -70,7 +70,7 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `MCP_PORT` | | `8083` | リッスンポート |
 | `BIND_ADDR` | | `127.0.0.1` | バインドアドレス。Docker で mcp-gateway（別コンテナ）から到達可能にするには `0.0.0.0` を指定する |
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
-| `SQLITE_PATH` | | `/data/copilot-review.db` | watch state DB のパス |
+| `SQLITE_PATH` | | `/data/review-raven.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
 | `MCP_SESSION_TIMEOUT_MIN` | | `0` | Streamable HTTP セッションの idle timeout（分）。この期間クライアントからの HTTP リクエストが無い場合、セッションは閉じられ、古い `Mcp-Session-Id` でのリクエストは `404 session not found` を返す。既定値 `0` は idle eviction を無効化し、長時間接続のクライアント（Claude Code / IDE / `mcp-gateway`）が #14 の失敗モードに遭遇しないようにしている。トレードオフ: `DELETE` を送らずに消えたクライアントの session はプロセス終了まで残る → メモリ増加を抑えたい場合は正の値（例: 24 時間なら `1440`）を指定する。 |
 
@@ -85,15 +85,15 @@ Go 1.26+ が必要。
 go test ./...
 
 # ビルド
-go build -o bin/copilot-review-mcp ./cmd/server
+go build -o bin/review-raven ./cmd/server
 
 # Dockerイメージビルド
-docker build -t copilot-review-mcp:dev .
+docker build -t review-raven:dev .
 ```
 
 ## 履歴
 
-このリポジトリは [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/copilot-review-mcp/` を分離したもの。git 履歴は移行していない。Mcp-Docker 側の関連 PR / Issue（`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92` など）は `docs/` 配下のドキュメントから参照される。
+このリポジトリは [scottlz0310/Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker) の `services/review-raven/` を分離したもの。git 履歴は移行していない。Mcp-Docker 側の関連 PR / Issue（`#47`, `#52`, `#53`, `#55`–`#58`, `#62`, `#63`–`#68`, `#74`–`#77`, `#92` など）は `docs/` 配下のドキュメントから参照される。
 
 ## ライセンス
 

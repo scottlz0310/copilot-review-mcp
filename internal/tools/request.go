@@ -7,7 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
+	"github.com/scottlz0310/review-raven/internal/store"
 )
 
 // RequestInput is the input schema for request_copilot_review.

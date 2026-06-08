@@ -15,9 +15,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scottlz0310/copilot-review-mcp/internal/middleware"
-	"github.com/scottlz0310/copilot-review-mcp/internal/store"
-	"github.com/scottlz0310/copilot-review-mcp/internal/watch"
+	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/store"
+	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
 var schemaCache = mcp.NewSchemaCache()
@@ -201,7 +201,7 @@ type BuilderOptions struct {
 	// GatewayClientFactory, if non-nil, overrides the default static-token
 	// watch ClientFactory. It is invoked per watch with the authenticated
 	// GitHub session token and login. Used by Phase B delegated background
-	// access (see scottlz0310/copilot-review-mcp#29).
+	// access (see scottlz0310/review-raven#29).
 	GatewayClientFactory func(ctx context.Context, token, login string) watch.ReviewDataFetcher
 }
 
@@ -223,7 +223,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	// fully initialized, so watchManager is always non-nil.
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "copilot-review-mcp", Version: "3.1.0"},
+		&mcp.Implementation{Name: "review-raven", Version: "3.1.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
@@ -231,7 +231,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 					return nil
 				}
 				uri := req.Params.URI
-				const watchPrefix = "copilot-review://watch/"
+				const watchPrefix = "review-raven://watch/"
 				if !strings.HasPrefix(uri, watchPrefix) {
 					return nil // not a watch URI; allow subscription for other resource types
 				}
