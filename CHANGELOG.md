@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — new skill for the thread-owl reviewed-side cycle. Reads review threads via paginated GraphQL, classifies and fixes, replies and resolves, then posts `@thread-owl re-review requested` as the re-review path. The reviewed-side cycle ends there; the next reviewer-side cycle is triggered by thread-owl's webhook. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
+
 ### Changed
 
-- `docs/skills/pr-review-cycle.md` / `.ja.md` — Phase 6 `REQUEST_REREVIEW` action updated: replaced `request_copilot_review` with posting `@thread-owl re-review requested` via `add_issue_comment`. The reviewed-side cycle now terminates at this point; the next reviewer-side cycle is delegated to the thread-owl webhook → queue → mcp-resource-subscriber chain. ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
-- `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge).
+- `docs/skills/pr-review-cycle.md` / `.ja.md` — explicitly scoped to **Copilot review only**. Phase 6 `REQUEST_REREVIEW` reverted to `request_copilot_review` + Copilot watch loop (as originally designed). Added scope callout and `## See Also` link to `thread-owl-review-cycle`. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
+- `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge). ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 
 ### Removed
 
