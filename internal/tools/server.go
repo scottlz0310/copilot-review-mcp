@@ -232,6 +232,10 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 				}
 				uri := req.Params.URI
 				const watchPrefix = "review-raven://watch/"
+				const legacyPrefix = "copilot-review://watch/"
+				if strings.HasPrefix(uri, legacyPrefix) {
+					return mcp.ResourceNotFoundError(uri) // legacy scheme removed in #66
+				}
 				if !strings.HasPrefix(uri, watchPrefix) {
 					return nil // not a watch URI; allow subscription for other resource types
 				}

@@ -426,6 +426,45 @@ func TestStreamableHandlerServeHTTPFallbackRegistersSession(t *testing.T) {
 	}
 }
 
+// TestSubscribeHandlerRejectsLegacyURIScheme is a regression test for the ghost
+// subscription bug: before the fix, copilot-review://watch/... URIs fell through
+// the watchPrefix check and returned nil (success), causing go-sdk to register a
+// subscription that would never receive notifications. The fix returns
+// mcp.ResourceNotFoundError for the legacy scheme.
+func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint:             httpServer.URL,
+		HTTPClient:           bearerTokenHTTPClient("token-a"),
+		DisableStandaloneSSE: true,
+		MaxRetries:           -1,
+	}, nil)
+	if err != nil {
+		t.Fatalf("client.Connect() error = %v", err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+
+	// Subscribe with legacy URI — expect ResourceNotFound error.
+	err = session.Subscribe(context.Background(), &mcp.SubscribeParams{
+		URI: "copilot-review://watch/abc123",
+	})
+	if err == nil {
+		t.Fatal("Subscribe with legacy URI got success, want ResourceNotFound error")
+	}
+	if !strings.Contains(err.Error(), "Resource not found") {
+		t.Fatalf("Subscribe error = %q, want to contain \"Resource not found\"", err.Error())
+	}
+}
+
 func handlerSessionLoginCount(handler *StreamableHandler) int {
 	handler.mu.Lock()
 	defer handler.mu.Unlock()

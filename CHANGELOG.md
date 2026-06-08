@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Legacy `copilot-review://` URI scheme and `COPILOT_REVIEW_*` env vars removed** ([Issue #66](https://github.com/scottlz0310/review-raven/issues/66)):
+  - `SubscribeHandler` now returns `ResourceNotFoundError` for `copilot-review://watch/...` URIs instead of silently succeeding (ghost subscriptions). Re-request any active watches.
+  - `parseWatchIDFromURI()` no longer accepts `copilot-review://watch/{id}`; only `review-raven://watch/{id}` is valid.
+  - `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` / `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` fallback removed from `loadConfig()`. Set `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` / `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` directly.
+
 ## [0.1.0] - 2026-06-08
 
 First release as **review-raven** — product identity rename and architecture docs.

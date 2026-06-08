@@ -9,6 +9,13 @@
 
 ## [Unreleased]
 
+### 削除
+
+- **旧 `copilot-review://` URI スキームおよび `COPILOT_REVIEW_*` 環境変数を削除** ([Issue #66](https://github.com/scottlz0310/review-raven/issues/66)):
+  - `SubscribeHandler` が `copilot-review://watch/...` URI に対して `ResourceNotFoundError` を返すよう修正。従来は `nil` を返すためゴースト購読が成立していた。アクティブな watch は再依頼が必要。
+  - `parseWatchIDFromURI()` が `copilot-review://watch/{id}` を受け付けなくなった。有効なのは `review-raven://watch/{id}` のみ。
+  - `loadConfig()` から `COPILOT_REVIEW_GATEWAY_INTERNAL_URL` / `COPILOT_REVIEW_GATEWAY_INTERNAL_SECRET` の fallback 読み込みを削除。`REVIEW_RAVEN_GATEWAY_INTERNAL_URL` / `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` を直接設定すること。
+
 ## [0.1.0] - 2026-06-08
 
 **review-raven** としての最初のリリース — プロダクト名変更とアーキテクチャドキュメントの追加。
