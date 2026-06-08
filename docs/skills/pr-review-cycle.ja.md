@@ -1,14 +1,17 @@
 ---
 name: pr-review-cycle
-description: レビュー完了を async watch ポーリング（mcp-resource-subscriber 不要）で待機してから PR レビュー対応サイクル（スレッド取得→分類・採否判断→修正→返信→サイクル評価→サマリ投稿）を自律実行する。PR 作成直後・レビュー依頼直後に呼び出す。マージは自律実行しない。
+description: "Copilot review 専用スキル。async watch ポーリングで Copilot レビュー完了を待機し、reviewed-side cycle（スレッド取得→分類→修正→返信→Copilot 再レビュー依頼→サマリ投稿）を自律実行する。thread-owl レビュー用は thread-owl-review-cycle を使うこと。"
 ---
 
 # pr-review-cycle スキル
 
 [English](pr-review-cycle.md)
 
-`review-raven` サーバーの watch ツール群を使い、レビュー完了を
-**async watch ポーリング**で待機してから PR レビュー対応サイクルを自律実行するスキル。
+> **スコープ: Copilot review 専用。**
+> このスキルは Copilot review の async watch ポーリングによる取得を対象とする。
+> **thread-owl** によるレビューには [`thread-owl-review-cycle`](thread-owl-review-cycle.ja.md) を使うこと。
+
+`review-raven` サーバーの watch ツール群を使い、**Copilot review** の完了を **async watch ポーリング**で待機してから PR レビュー対応サイクルを自律実行するスキル。修正が必要な場合は `request_copilot_review` で Copilot に直接再レビューを依頼する。`@thread-owl` 再レビューコメントは投稿しない。
 
 MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブスクリプション系外部 CLI は不要。
 `mcp-resource-subscriber` が利用できない環境向けのポーリングベース代替スキル（`pr-review-subscribe` の代替）。
@@ -44,11 +47,8 @@ MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブス�
 
 ```
 Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
-                ↑                                              ↓ WAIT
+                ↑                                              ↓ WAIT / REQUEST_REREVIEW
                 └──────────────────────────────────────────────┘
-                                        ↓ REQUEST_REREVIEW
-                              @thread-owl コメント投稿 → reviewed-side cycle 完了
-                              （次の reviewer-side cycle は thread-owl に委譲）
                                         ↓ READY_TO_MERGE
                               Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
                                         ↓ ESCALATE
@@ -229,29 +229,13 @@ Phase 6 で使用する `fix_type` を決定する:
 |-------------------|---------------|
 | `WAIT` | `cycles_done` をインクリメントして Phase 1 へ戻る |
 | `REPLY_RESOLVE` | Phase 2 へ戻る（未解決スレッドが残っている） |
-| `REQUEST_REREVIEW` | 下記オーバーライドルール参照; 通常は `{GH}:add_issue_comment` で `@thread-owl re-review requested` を投稿（下記フォーマット参照）→ 現在の reviewed-side cycle を完了。次の reviewer-side cycle は thread-owl webhook → queue → mcp-resource-subscriber に委譲。Phase 1 には戻らない。 |
+| `REQUEST_REREVIEW` | 下記オーバーライドルール参照; 通常は `{CRM}:request_copilot_review` → `cycles_done` インクリメント → Phase 1 へ戻る |
 | `READY_TO_MERGE` | Phase 6.5 へ |
 | `ESCALATE` | 分類・報告（下記参照）してサイクル終了 |
 
 **`REQUEST_REREVIEW` オーバーライド**: `recommended_action = REQUEST_REREVIEW` かつ
 `cycles_done ≥ 1` かつ 今サイクルの Phase 2 での未解決スレッド数 = 0 の場合、
 再レビューを依頼しない。`READY_TO_MERGE` として扱い Phase 6.5 へ進む。
-
-**`REQUEST_REREVIEW` コメントフォーマット**: `{GH}:add_issue_comment` で以下を投稿する:
-
-```markdown
-@thread-owl re-review requested
-
-修正対応が完了しました。再レビューをお願いします。
-
-<!-- review-raven: cycles_done=N -->
-```
-
-`N` には現在の `cycles_done` の値を記入する（0 始まり。初回の再レビュー依頼では `cycles_done=0`）。
-
-このコメントが thread-owl に reviewer-side cycle の開始を要求する。reviewed-side cycle はここで完了する。Phase 1 には戻らない。
-
-**再開時の cycle count 復元**: thread-owl queue 通知後に skill が Phase 2 から再開する時点では、`cycles_done` はローカル状態に存在しない。PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N -->` アノテーションを見つけて `N` を読み取る。そこに 1 を加算した値を現在の `cycles_done` とする。アノテーションが見つからない場合は `cycles_done = 0` として扱う。
 
 **終了分類**:
 
@@ -359,7 +343,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 | ツール名 | 用途 |
 |---------|------|
 | `{CRM}:get_copilot_review_status` | GitHub 上のレビュー状態を即時確認 |
-| `{CRM}:request_copilot_review` | 初回レビューを依頼（Phase 0 のみ。再レビュー依頼には使用しない） |
+| `{CRM}:request_copilot_review` | Copilot review を依頼・再依頼（Phase 0 および Phase 6 の `REQUEST_REREVIEW`） |
 | `{CRM}:start_copilot_review_watch` | async watch 開始（即時 return） |
 | `{CRM}:get_copilot_review_watch_status` | watch の現在状態をポーリング |
 | `{CRM}:cancel_copilot_review_watch` | watch をキャンセル |
@@ -368,3 +352,9 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 | `{CRM}:get_pr_review_cycle_status` | サイクル評価・次アクション判定 |
 | `{GH}:add_issue_comment` | PR にコメント投稿 |
 | `{GH}:create_issue` | フォローアップトラッキング Issue を作成 |
+
+---
+
+## 関連スキル
+
+- [`thread-owl-review-cycle`](thread-owl-review-cycle.ja.md) — thread-owl レビュー用。再レビュー依頼経路は `@thread-owl` コメント投稿（Copilot watch ループではない）。

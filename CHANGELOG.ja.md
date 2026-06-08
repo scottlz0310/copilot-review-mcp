@@ -9,10 +9,14 @@
 
 ## [Unreleased]
 
+### 追加
+
+- `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — thread-owl reviewed-side cycle 用の新 skill を追加。ページネーション付き GraphQL でレビュースレッドを取得し、分類・修正・返信・resolve を行い、再レビューが必要な場合は `@thread-owl re-review requested` コメントを投稿して cycle を完了する。次の reviewer-side cycle は thread-owl webhook が起動する。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
+
 ### 変更
 
-- `docs/skills/pr-review-cycle.md` / `.ja.md` — Phase 6 `REQUEST_REREVIEW` アクションを更新: `request_copilot_review` の呼び出しを `add_issue_comment` による `@thread-owl re-review requested` 投稿に変更。reviewed-side cycle はここで完了し、次の reviewer-side cycle は thread-owl webhook → queue → mcp-resource-subscriber に委譲される。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
-- `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。
+- `docs/skills/pr-review-cycle.md` / `.ja.md` — **Copilot review 専用** スキルとして明示的にスコープを限定。Phase 6 `REQUEST_REREVIEW` を `request_copilot_review` + Copilot watch ループ（当初設計）に戻した。スコープ注意書きと `## 関連スキル`（`thread-owl-review-cycle` へのリンク）を追加。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
+- `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 
 ### 削除
 
