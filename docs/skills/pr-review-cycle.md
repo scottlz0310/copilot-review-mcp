@@ -42,8 +42,11 @@ This skill relies only on MCP tools — no `mcp-resource-subscriber` or other su
 
 ```
 Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
-                ↑                                              ↓ WAIT / REQUEST_REREVIEW
+                ↑                                              ↓ WAIT
                 └──────────────────────────────────────────────┘
+                                        ↓ REQUEST_REREVIEW
+                              Post @thread-owl comment → reviewed-side cycle complete
+                              (next reviewer-side cycle delegated to thread-owl)
                                         ↓ READY_TO_MERGE
                               Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
                                         ↓ ESCALATE
@@ -216,11 +219,27 @@ Follow `recommended_action`:
 |-------------------|-------------|
 | `WAIT` | Increment `cycles_done`, return to Phase 1 |
 | `REPLY_RESOLVE` | Return to Phase 2 (unresolved threads remain) |
-| `REQUEST_REREVIEW` | See override rule; otherwise call `{CRM}:request_copilot_review` → increment `cycles_done` → Phase 1 |
+| `REQUEST_REREVIEW` | See override rule; otherwise post `@thread-owl re-review requested` via `{GH}:add_issue_comment` (see format below) → current reviewed-side cycle complete. Next reviewer-side cycle is delegated to the thread-owl webhook → queue → mcp-resource-subscriber. |
 | `READY_TO_MERGE` | → Phase 6.5 |
 | `ESCALATE` | Classify and report (see below), then stop |
 
 **`REQUEST_REREVIEW` override**: If `recommended_action = REQUEST_REREVIEW` AND `cycles_done ≥ 1` AND unresolved thread count from Phase 2 of this cycle = 0, do **not** request another review. Treat as `READY_TO_MERGE` and proceed to Phase 6.5.
+
+**`REQUEST_REREVIEW` comment format**: Post the following via `{GH}:add_issue_comment`:
+
+```markdown
+@thread-owl re-review requested
+
+The requested changes have been addressed. Please review again.
+
+<!-- review-raven: cycles_done=N -->
+```
+
+Replace `N` with the current value of `cycles_done` (0-based; e.g., `cycles_done=0` on the first re-review request).
+
+This comment signals thread-owl to enqueue a reviewer-side cycle. The reviewed-side cycle ends here; do NOT loop back to Phase 1.
+
+**Cycle count recovery on restart**: When the skill re-enters at Phase 2 after a thread-owl queue notification, `cycles_done` is no longer available in local state. Recover it by searching PR issue comments for the most recent `<!-- review-raven: cycles_done=N -->` annotation and parsing `N`. Increment it by 1 to get the current cycle count. If no annotation is found, treat `cycles_done` as 0.
 
 **Termination classification**:
 
@@ -326,7 +345,7 @@ If any other condition is not met, report the missing items and await instructio
 | Tool | Purpose |
 |------|---------|
 | `{CRM}:get_copilot_review_status` | Instant check of review state on GitHub |
-| `{CRM}:request_copilot_review` | Request a review |
+| `{CRM}:request_copilot_review` | Request an initial review (Phase 0 only; not used for re-review) |
 | `{CRM}:start_copilot_review_watch` | Start async watch (returns immediately) |
 | `{CRM}:get_copilot_review_watch_status` | Poll current watch state |
 | `{CRM}:cancel_copilot_review_watch` | Cancel a watch |

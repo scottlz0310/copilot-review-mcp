@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/skills/pr-review-cycle.md` / `.ja.md` — Phase 6 `REQUEST_REREVIEW` action updated: replaced `request_copilot_review` with posting `@thread-owl re-review requested` via `add_issue_comment`. The reviewed-side cycle now terminates at this point; the next reviewer-side cycle is delegated to the thread-owl webhook → queue → mcp-resource-subscriber chain. ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
+- `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge).
+
 ### Removed
 
 - **Legacy `copilot-review://` URI scheme and `COPILOT_REVIEW_*` env vars removed** ([Issue #66](https://github.com/scottlz0310/review-raven/issues/66)):

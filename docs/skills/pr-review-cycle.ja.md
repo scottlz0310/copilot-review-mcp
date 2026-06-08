@@ -44,8 +44,11 @@ MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブス�
 
 ```
 Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
-                ↑                                              ↓ WAIT / REQUEST_REREVIEW
+                ↑                                              ↓ WAIT
                 └──────────────────────────────────────────────┘
+                                        ↓ REQUEST_REREVIEW
+                              @thread-owl コメント投稿 → reviewed-side cycle 完了
+                              （次の reviewer-side cycle は thread-owl に委譲）
                                         ↓ READY_TO_MERGE
                               Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
                                         ↓ ESCALATE
@@ -226,13 +229,29 @@ Phase 6 で使用する `fix_type` を決定する:
 |-------------------|---------------|
 | `WAIT` | `cycles_done` をインクリメントして Phase 1 へ戻る |
 | `REPLY_RESOLVE` | Phase 2 へ戻る（未解決スレッドが残っている） |
-| `REQUEST_REREVIEW` | 下記オーバーライドルール参照; 通常は `{CRM}:request_copilot_review` → `cycles_done` インクリメント → Phase 1 |
+| `REQUEST_REREVIEW` | 下記オーバーライドルール参照; 通常は `{GH}:add_issue_comment` で `@thread-owl re-review requested` を投稿（下記フォーマット参照）→ 現在の reviewed-side cycle を完了。次の reviewer-side cycle は thread-owl webhook → queue → mcp-resource-subscriber に委譲。Phase 1 には戻らない。 |
 | `READY_TO_MERGE` | Phase 6.5 へ |
 | `ESCALATE` | 分類・報告（下記参照）してサイクル終了 |
 
 **`REQUEST_REREVIEW` オーバーライド**: `recommended_action = REQUEST_REREVIEW` かつ
 `cycles_done ≥ 1` かつ 今サイクルの Phase 2 での未解決スレッド数 = 0 の場合、
 再レビューを依頼しない。`READY_TO_MERGE` として扱い Phase 6.5 へ進む。
+
+**`REQUEST_REREVIEW` コメントフォーマット**: `{GH}:add_issue_comment` で以下を投稿する:
+
+```markdown
+@thread-owl re-review requested
+
+修正対応が完了しました。再レビューをお願いします。
+
+<!-- review-raven: cycles_done=N -->
+```
+
+`N` には現在の `cycles_done` の値を記入する（0 始まり。初回の再レビュー依頼では `cycles_done=0`）。
+
+このコメントが thread-owl に reviewer-side cycle の開始を要求する。reviewed-side cycle はここで完了する。Phase 1 には戻らない。
+
+**再開時の cycle count 復元**: thread-owl queue 通知後に skill が Phase 2 から再開する時点では、`cycles_done` はローカル状態に存在しない。PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N -->` アノテーションを見つけて `N` を読み取る。そこに 1 を加算した値を現在の `cycles_done` とする。アノテーションが見つからない場合は `cycles_done = 0` として扱う。
 
 **終了分類**:
 
@@ -340,7 +359,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 | ツール名 | 用途 |
 |---------|------|
 | `{CRM}:get_copilot_review_status` | GitHub 上のレビュー状態を即時確認 |
-| `{CRM}:request_copilot_review` | レビューを依頼 |
+| `{CRM}:request_copilot_review` | 初回レビューを依頼（Phase 0 のみ。再レビュー依頼には使用しない） |
 | `{CRM}:start_copilot_review_watch` | async watch 開始（即時 return） |
 | `{CRM}:get_copilot_review_watch_status` | watch の現在状態をポーリング |
 | `{CRM}:cancel_copilot_review_watch` | watch をキャンセル |

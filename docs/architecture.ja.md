@@ -66,6 +66,20 @@ watch resource のスキームは `review-raven://watch/{id}`。改名前に使�
 
 公開 API 互換維持のため、ツール名（`request_copilot_review`、`start_copilot_review_watch` 等）は変更しない。
 
+## 再レビュー依頼フロー
+
+修正完了後、review-raven は `add_issue_comment` で PR に `@thread-owl re-review requested` を投稿する。これが reviewed-side cycle と reviewer-side cycle の境界となる。
+
+| コンポーネント | 責務 |
+|---|---|
+| **review-raven**（reviewed 側） | 修正 → reply → resolve 完了後に `@thread-owl re-review requested` コメントを投稿する。これが reviewed-side cycle の終端。 |
+| **thread-owl**（reviewer 側） | `issue_comment.created` webhook で `@thread-owl` メンションを検出 → `ReviewCandidate.reason = "re-review-requested"` として queue に積む → `queue://review/queue` resource を更新通知する。 |
+| **mcp-resource-subscriber** | queue resource を購読し、更新を agent workflow に橋渡しする。 |
+
+review-raven は review queue を管理しない。`@thread-owl` コメントが引き渡しポイントであり、投稿後に reviewed-side cycle は完了する。次の reviewer-side cycle は thread-owl の queue から始まる。
+
+この方式は Copilot 固有 API ではなく GitHub の通常 PR conversation を利用するため、任意の reviewer（Copilot・人間・bot）に対して機能する。
+
 ## pr-review-subscribe skill との関係
 
 `pr-review-subscribe` skill は review 取得・スレッド処理・修正 workflow を統合する上位 workflow である。review-raven はその中で reviewed-side MCP provider として機能する。
