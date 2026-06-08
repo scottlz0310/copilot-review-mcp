@@ -1,5 +1,9 @@
 # review-raven
 
+<p align="center">
+  <img src="assets/review_raven_avatar.png" alt="review-raven" width="150">
+</p>
+
 [English](README.md)
 
 PR レビューを受けて直す側の MCP（Model Context Protocol）サーバー。Copilot review・human reviewer・bot reviewer を問わず、review thread の読み取り・返信・resolve・再レビュー依頼を LLM 向けの async watch + notification モデルで提供する。

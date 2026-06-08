@@ -1,5 +1,9 @@
 # review-raven
 
+<p align="center">
+  <img src="assets/review_raven_avatar.png" alt="review-raven" width="150">
+</p>
+
 [日本語](README.ja.md)
 
 An MCP (Model Context Protocol) server for the **reviewed side** of a PR review workflow. Reads review threads, replies, resolves, and requests re-review — regardless of whether the review came from Copilot, a human reviewer, or a bot. Built on an **async watch + notification** model designed for LLM agents.
