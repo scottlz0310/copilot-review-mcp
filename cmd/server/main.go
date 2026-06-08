@@ -42,11 +42,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// OAuth endpoints have been removed in v3.0.0; return 410 Gone with migration guidance.
+	// OAuth endpoints are not supported; return 410 Gone with migration guidance.
 	goneHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
-		_, _ = fmt.Fprintln(w, `{"error":"oauth_removed","detail":"Standalone OAuth was removed in v3.0.0. Connect via mcp-gateway instead. See https://github.com/scottlz0310/review-raven#readme"}`)
+		_, _ = fmt.Fprintln(w, `{"error":"oauth_removed","detail":"Standalone OAuth is not supported in review-raven. Connect via mcp-gateway instead. See https://github.com/scottlz0310/review-raven#readme"}`)
 	}
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", goneHandler)
 	mux.HandleFunc("GET /authorize", goneHandler)

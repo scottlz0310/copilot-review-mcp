@@ -11,7 +11,7 @@ This guide covers the basic setup needed to run `review-raven` as an MCP server:
 
 For the tool-level flow, see [watch-tools.md](watch-tools.md). For the skill template itself, see [skills/pr-review-cycle.md](skills/pr-review-cycle.md).
 
-> **v3.0.0 BREAKING CHANGE**: Standalone OAuth has been removed. mcp-gateway is now required.
+> **mcp-gateway required**: Standalone OAuth is not supported. All traffic must pass through mcp-gateway. Migrating from `copilot-review-mcp`? See [architecture.md — Migration / Compatibility](architecture.md#migration--compatibility).
 
 ## Architecture
 

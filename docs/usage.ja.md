@@ -11,7 +11,7 @@
 
 ツール単位の流れは [watch-tools.ja.md](watch-tools.ja.md)、skill テンプレート本体は [skills/pr-review-cycle.ja.md](skills/pr-review-cycle.ja.md) を参照。
 
-> **v3.0.0 BREAKING CHANGE**: スタンドアロン OAuth を削除。mcp-gateway が必須になりました。
+> **mcp-gateway 必須**: スタンドアロン OAuth は非対応です。すべてのトラフィックは mcp-gateway を経由する必要があります。`copilot-review-mcp` からの移行については [architecture.ja.md — Migration / 互換性](architecture.ja.md#migration--互換性) を参照。
 
 ## アーキテクチャ
 

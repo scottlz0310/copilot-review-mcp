@@ -59,7 +59,7 @@ func resolveStreamableSessionTimeout(getenv func(string) string) time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// TokenInvalidator was removed in v3.0.0 (standalone OAuth removed).
+// TokenInvalidator is not supported — standalone OAuth was removed in the pre-rename copilot-review-mcp lineage.
 
 // StreamableHandler serves MCP over Streamable HTTP and owns shared background state.
 type StreamableHandler struct {
@@ -223,7 +223,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	// fully initialized, so watchManager is always non-nil.
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "review-raven", Version: "3.1.0"},
+		&mcp.Implementation{Name: "review-raven", Version: "0.1.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {

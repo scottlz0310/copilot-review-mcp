@@ -4,7 +4,7 @@
 
 An MCP (Model Context Protocol) server that manages GitHub Copilot PR review cycles. Provides review request, completion detection, staleness detection, and thread reply/resolve through an **async watch + notification** model designed for LLM agents.
 
-> **v3.0.0 BREAKING CHANGE**: Standalone GitHub OAuth has been removed. This server must be deployed behind **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)**, which handles authentication and injects `X-Authenticated-User` + `Authorization` headers.
+> **mcp-gateway required**: This server must be deployed behind **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)**, which handles authentication and injects `X-Authenticated-User` + `Authorization` headers. Standalone OAuth is not supported. Migrating from `copilot-review-mcp`? See [docs/architecture.md — Migration / Compatibility](docs/architecture.md#migration--compatibility).
 
 ## Features
 
@@ -76,7 +76,7 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` or leave both unset. |
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_URL`. |
 
-**Removed in v3.0.0**: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
+**Not supported** (removed in pre-rename `copilot-review-mcp` lineage): `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL`, `GITHUB_OAUTH_SCOPES`, `SESSION_TTL_MIN`, `TOKEN_CACHE_TTL_MIN`, `TOKEN_EXPIRES_IN_SEC`, `AUTH_MODE`.
 
 ## Local Development
 

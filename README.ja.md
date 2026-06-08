@@ -4,7 +4,7 @@
 
 GitHub Copilot の PR レビューサイクルを管理する MCP（Model Context Protocol）サーバー。レビュー依頼・完了検知・staleness 判定・スレッド返信／解決までを LLM 向けの async watch + notification モデルで提供する。
 
-> **v3.0.0 BREAKING CHANGE**: スタンドアロン GitHub OAuth を削除。このサーバーは認証を担う **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)** の背後にデプロイする必要があります。mcp-gateway が OAuth を処理し `X-Authenticated-User` と `Authorization` ヘッダーを注入します。
+> **mcp-gateway 必須**: このサーバーは認証を担う **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)** の背後にデプロイする必要があります。mcp-gateway が OAuth を処理し `X-Authenticated-User` と `Authorization` ヘッダーを注入します。スタンドアロン OAuth は非対応です。`copilot-review-mcp` からの移行については [docs/architecture.ja.md — Migration / 互換性](docs/architecture.ja.md#migration--互換性) を参照。
 
 ## 特徴
 
@@ -74,7 +74,7 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
 | `MCP_SESSION_TIMEOUT_MIN` | | `0` | Streamable HTTP セッションの idle timeout（分）。この期間クライアントからの HTTP リクエストが無い場合、セッションは閉じられ、古い `Mcp-Session-Id` でのリクエストは `404 session not found` を返す。既定値 `0` は idle eviction を無効化し、長時間接続のクライアント（Claude Code / IDE / `mcp-gateway`）が #14 の失敗モードに遭遇しないようにしている。トレードオフ: `DELETE` を送らずに消えたクライアントの session はプロセス終了まで残る → メモリ増加を抑えたい場合は正の値（例: 24 時間なら `1440`）を指定する。 |
 
-**v3.0.0 で削除**: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
+**非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 
 ## ローカル開発
 
