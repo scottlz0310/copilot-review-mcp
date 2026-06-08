@@ -1,13 +1,13 @@
 ---
 name: pr-review-cycle
-description: Copilot レビュー完了を async watch ポーリング（mcp-resource-subscriber 不要）で待機してから PR レビュー対応サイクル（スレッド取得→分類・採否判断→修正→返信→サイクル評価→サマリ投稿）を自律実行する。PR 作成直後・Copilot レビュー依頼直後に呼び出す。マージは自律実行しない。
+description: レビュー完了を async watch ポーリング（mcp-resource-subscriber 不要）で待機してから PR レビュー対応サイクル（スレッド取得→分類・採否判断→修正→返信→サイクル評価→サマリ投稿）を自律実行する。PR 作成直後・レビュー依頼直後に呼び出す。マージは自律実行しない。
 ---
 
 # pr-review-cycle スキル
 
 [English](pr-review-cycle.md)
 
-`review-raven` サーバーの watch ツール群を使い、Copilot レビュー完了を
+`review-raven` サーバーの watch ツール群を使い、レビュー完了を
 **async watch ポーリング**で待機してから PR レビュー対応サイクルを自律実行するスキル。
 
 MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブスクリプション系外部 CLI は不要。
@@ -26,7 +26,7 @@ MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブス�
 
 | サーバー | 役割 | 参照 |
 |---------|------|------|
-| `review-raven` | Copilot レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
+| `review-raven` | レビュー watch・スレッド操作 | [README.ja.md](../../README.ja.md) |
 | `github` | Issue/PR コメント投稿 | [README.ja.md](../../README.ja.md) |
 
 ### プレースホルダーの読み替え
@@ -99,7 +99,7 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
 
 1. `{CRM}:cancel_copilot_review_watch` で watch をキャンセル。
 2. `{GH}:add_issue_comment` で以下を投稿:
-   `Copilot レビュー完了待機がタイムアウトしました（15 分）。手動で再開してください。`
+   `レビュー完了待機がタイムアウトしました（15 分）。手動で再開してください。`
 3. ユーザーに手動再開方法を案内して終了。
 
 ## Phase 2: スレッド取得
@@ -339,8 +339,8 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 | ツール名 | 用途 |
 |---------|------|
-| `{CRM}:get_copilot_review_status` | GitHub 上の Copilot レビュー状態を即時確認 |
-| `{CRM}:request_copilot_review` | Copilot レビューを依頼 |
+| `{CRM}:get_copilot_review_status` | GitHub 上のレビュー状態を即時確認 |
+| `{CRM}:request_copilot_review` | レビューを依頼 |
 | `{CRM}:start_copilot_review_watch` | async watch 開始（即時 return） |
 | `{CRM}:get_copilot_review_watch_status` | watch の現在状態をポーリング |
 | `{CRM}:cancel_copilot_review_watch` | watch をキャンセル |

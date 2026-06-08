@@ -1,8 +1,12 @@
 # review-raven
 
+<p align="center">
+  <img src="assets/review_raven_avatar.png" alt="review-raven" width="150">
+</p>
+
 [English](README.md)
 
-GitHub Copilot の PR レビューサイクルを管理する MCP（Model Context Protocol）サーバー。レビュー依頼・完了検知・staleness 判定・スレッド返信／解決までを LLM 向けの async watch + notification モデルで提供する。
+PR レビューを受けて直す側の MCP（Model Context Protocol）サーバー。review thread の読み取り・返信・resolve は reviewer provider（Copilot review・human reviewer・bot reviewer）を問わず対応する。再レビュー依頼は設定された acquisition provider 経由で行う。LLM 向けの async watch + notification モデルで提供する。
 
 > **mcp-gateway 必須**: このサーバーは認証を担う **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)** の背後にデプロイする必要があります。mcp-gateway が OAuth を処理し `X-Authenticated-User` と `Authorization` ヘッダーを注入します。スタンドアロン OAuth は非対応です。`copilot-review-mcp` からの移行については [docs/architecture.ja.md — Migration / 互換性](docs/architecture.ja.md#migration--互換性) を参照。
 

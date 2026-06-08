@@ -1,8 +1,12 @@
 # review-raven
 
+<p align="center">
+  <img src="assets/review_raven_avatar.png" alt="review-raven" width="150">
+</p>
+
 [日本語](README.ja.md)
 
-An MCP (Model Context Protocol) server that manages GitHub Copilot PR review cycles. Provides review request, completion detection, staleness detection, and thread reply/resolve through an **async watch + notification** model designed for LLM agents.
+An MCP (Model Context Protocol) server for the **reviewed side** of a PR review workflow. Reads, replies to, and resolves review threads regardless of review provider (Copilot, human reviewer, or bot). Re-review requests are routed through the configured acquisition provider. Built on an **async watch + notification** model designed for LLM agents.
 
 > **mcp-gateway required**: This server must be deployed behind **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)**, which handles authentication and injects `X-Authenticated-User` + `Authorization` headers. Standalone OAuth is not supported. Migrating from `copilot-review-mcp`? See [docs/architecture.md — Migration / Compatibility](docs/architecture.md#migration--compatibility).
 

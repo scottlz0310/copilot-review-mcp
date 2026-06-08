@@ -36,7 +36,7 @@ watch 系ツールは `recommended_next_action` と、必要に応じて `next_p
 - `POLL_AFTER`
   watch はまだ進行中。`next_poll_seconds` 秒後に同じ watch を再確認する。
 - `READ_REVIEW_THREADS`
-  Copilot review が `COMPLETED` または `BLOCKED` に到達した。次は `get_review_threads` などへ進む。
+  review が `COMPLETED` または `BLOCKED` に到達した。次は `get_review_threads` などへ進む。
 - `START_NEW_WATCH`
   現在の watch は継続しない。必要なら `get_copilot_review_status` を再確認してから、新しい watch を開始する。
   `RATE_LIMITED` の場合は `next_poll_seconds` が再開目安になる。

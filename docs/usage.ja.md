@@ -223,7 +223,7 @@ $pr-review-cycle
 
 skill は以下を行う。
 
-1. Copilot review の状態確認または依頼
+1. レビューの状態確認または依頼
 2. async watch による完了待機
 3. review thread の取得
 4. コメント分類

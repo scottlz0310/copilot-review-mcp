@@ -1,13 +1,13 @@
 ---
 name: pr-review-cycle
-description: Waits for Copilot review completion via async watch polling (no mcp-resource-subscriber CLI required), then autonomously runs the PR review response cycle (fetch threads → classify & accept/reject → fix → reply → evaluate cycle → post summary). Invoke immediately after creating a PR or requesting a Copilot review. Does not merge autonomously.
+description: Waits for review completion via async watch polling (no mcp-resource-subscriber CLI required), then autonomously runs the PR review response cycle (fetch threads → classify & accept/reject → fix → reply → evaluate cycle → post summary). Invoke immediately after creating a PR or requesting a review. Does not merge autonomously.
 ---
 
 # pr-review-cycle Skill
 
 [日本語](pr-review-cycle.ja.md)
 
-A skill that uses the `review-raven` MCP server's watch tools to wait for Copilot review completion via **async watch polling**, then autonomously runs the PR review response cycle.
+A skill that uses the `review-raven` MCP server's watch tools to wait for review completion via **async watch polling**, then autonomously runs the PR review response cycle.
 
 This skill relies only on MCP tools — no `mcp-resource-subscriber` or other subscription-based CLI is required. It is the polling-based alternative to `pr-review-subscribe` for environments where `mcp-resource-subscriber` is unavailable.
 
@@ -24,7 +24,7 @@ This skill relies only on MCP tools — no `mcp-resource-subscriber` or other su
 
 | Server | Role | Reference |
 |---------|------|-----------|
-| `review-raven` | Copilot review watch & thread operations | [README.md](../../README.md) |
+| `review-raven` | Review watch & thread operations | [README.md](../../README.md) |
 | `github` | Post Issue/PR comments | [README.md](../../README.md) |
 
 ### Placeholder Substitution
@@ -95,7 +95,7 @@ Follow `recommended_next_action`:
 
 1. Cancel the watch with `{CRM}:cancel_copilot_review_watch`.
 2. Post via `{GH}:add_issue_comment`:
-   `Copilot review completion wait timed out after 15 minutes. Please resume manually.`
+   `Review completion wait timed out after 15 minutes. Please resume manually.`
 3. Guide the user on how to resume manually and exit.
 
 ## Phase 2: Fetch Threads
@@ -325,8 +325,8 @@ If any other condition is not met, report the missing items and await instructio
 
 | Tool | Purpose |
 |------|---------|
-| `{CRM}:get_copilot_review_status` | Instant check of Copilot review state on GitHub |
-| `{CRM}:request_copilot_review` | Request a Copilot review |
+| `{CRM}:get_copilot_review_status` | Instant check of review state on GitHub |
+| `{CRM}:request_copilot_review` | Request a review |
 | `{CRM}:start_copilot_review_watch` | Start async watch (returns immediately) |
 | `{CRM}:get_copilot_review_watch_status` | Poll current watch state |
 | `{CRM}:cancel_copilot_review_watch` | Cancel a watch |
