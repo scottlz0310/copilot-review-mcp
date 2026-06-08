@@ -62,7 +62,7 @@ Copilot review は取得 provider の一つであり、このリポジトリの�
 
 - `resourceURIForWatch()` が生成する新規 URI は canonical スキームのみ。
 - `parseWatchIDFromURI()` および `SubscribeHandler` は両スキームを受け付ける。
-- legacy alias の削除は別 issue で追跡する（[review-raven #65](https://github.com/scottlz0310/review-raven/issues/65)、別途起票）。
+- legacy alias の削除は別 issue で追跡する（[review-raven #66](https://github.com/scottlz0310/review-raven/issues/66)）。
 
 ### 環境変数
 
