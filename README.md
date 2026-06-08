@@ -6,7 +6,7 @@
 
 [日本語](README.ja.md)
 
-An MCP (Model Context Protocol) server for the **reviewed side** of a PR review workflow. Reads review threads, replies, resolves, and requests re-review — regardless of whether the review came from Copilot, a human reviewer, or a bot. Built on an **async watch + notification** model designed for LLM agents.
+An MCP (Model Context Protocol) server for the **reviewed side** of a PR review workflow. Reads, replies to, and resolves review threads regardless of review provider (Copilot, human reviewer, or bot). Re-review requests are routed through the configured acquisition provider. Built on an **async watch + notification** model designed for LLM agents.
 
 > **mcp-gateway required**: This server must be deployed behind **[mcp-gateway](https://github.com/mcp-b/mcp-gateway)**, which handles authentication and injects `X-Authenticated-User` + `Authorization` headers. Standalone OAuth is not supported. Migrating from `copilot-review-mcp`? See [docs/architecture.md — Migration / Compatibility](docs/architecture.md#migration--compatibility).
 
