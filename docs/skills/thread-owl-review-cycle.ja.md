@@ -104,9 +104,9 @@ gh api graphql -f query='
 ```
 
 - `pageInfo.hasNextPage` が `true` の場合、`-f cursor=<endCursor>` で繰り返して全件取得する。
-- `isResolved = false` のスレッドを収集する。
+- `isResolved = false` **かつ** ルートコメントの author が `thread-owl` のスレッドを収集する。他のレビュアー（Copilot・human reviewer 等）が投稿したスレッドはこのスキルのスコープ外としてスキップする。
 - 各スレッドの `id`（PRRT ノード ID — resolve mutation 用）とルートコメントの `databaseId`（返信用）を記録する。
-- 未解決スレッドが 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
+- thread-owl による未解決スレッドが 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
 - 1 件以上: **Phase 3** へ進む。
 
 ## Phase 3: 分類・採否判断（自律）

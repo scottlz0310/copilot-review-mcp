@@ -104,9 +104,9 @@ gh api graphql -f query='
 ```
 
 - If `pageInfo.hasNextPage` is `true`, repeat with `-f cursor=<endCursor>` until exhausted.
-- Collect threads where `isResolved = false`.
+- Collect threads where `isResolved = false` **and** the root comment author is `thread-owl`. Skip threads posted by other reviewers (Copilot, human reviewers, etc.) — they are out of scope for this skill.
 - Record each thread's `id` (PRRT node ID — for resolve mutation) and root comment `databaseId` (for replies).
-- If 0 unresolved threads: proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
+- If 0 unresolved thread-owl threads: proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
 - Otherwise: proceed to **Phase 3**.
 
 ## Phase 3: Classify & Accept/Reject (Autonomous)
