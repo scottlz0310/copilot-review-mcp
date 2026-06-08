@@ -231,9 +231,15 @@ Follow `recommended_action`:
 @thread-owl re-review requested
 
 The requested changes have been addressed. Please review again.
+
+<!-- review-raven: cycles_done=N -->
 ```
 
+Replace `N` with the current value of `cycles_done` (0-based; e.g., `cycles_done=0` on the first re-review request).
+
 This comment signals thread-owl to enqueue a reviewer-side cycle. The reviewed-side cycle ends here; do NOT loop back to Phase 1.
+
+**Cycle count recovery on restart**: When the skill re-enters at Phase 2 after a thread-owl queue notification, `cycles_done` is no longer available in local state. Recover it by searching PR issue comments for the most recent `<!-- review-raven: cycles_done=N -->` annotation and parsing `N`. Increment it by 1 to get the current cycle count. If no annotation is found, treat `cycles_done` as 0.
 
 **Termination classification**:
 

@@ -243,9 +243,15 @@ Phase 6 で使用する `fix_type` を決定する:
 @thread-owl re-review requested
 
 修正対応が完了しました。再レビューをお願いします。
+
+<!-- review-raven: cycles_done=N -->
 ```
 
+`N` には現在の `cycles_done` の値を記入する（0 始まり。初回の再レビュー依頼では `cycles_done=0`）。
+
 このコメントが thread-owl に reviewer-side cycle の開始を要求する。reviewed-side cycle はここで完了する。Phase 1 には戻らない。
+
+**再開時の cycle count 復元**: thread-owl queue 通知後に skill が Phase 2 から再開する時点では、`cycles_done` はローカル状態に存在しない。PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N -->` アノテーションを見つけて `N` を読み取る。そこに 1 を加算した値を現在の `cycles_done` とする。アノテーションが見つからない場合は `cycles_done = 0` として扱う。
 
 **終了分類**:
 
