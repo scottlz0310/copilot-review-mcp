@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default SQLite path updated: `/data/copilot-review.db` → `/data/review-raven.db` (overridable via `SQLITE_PATH`)
   - Docker image/container/volume names updated: `copilot-review-mcp` → `review-raven`, `copilot-review-data` → `review-raven-data`
   - `docs/architecture.md` added to document the reviewed-side MCP server role and responsibility boundaries with Thread Owl and mcp-resource-subscriber
+  - `.env.template` updated with canonical `REVIEW_RAVEN_*` variable names and a migration/compatibility section for legacy `COPILOT_REVIEW_*` names
+  - Legacy URI scheme `copilot-review://watch/{id}` accepted as a deprecated read/subscribe alias; new URIs use `review-raven://watch/{id}` only
 
 ## [3.2.0] - 2026-05-18
 

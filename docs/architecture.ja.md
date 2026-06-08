@@ -52,6 +52,26 @@ Copilot review は取得 provider の一つであり、このリポジトリの�
 - **Resource URI スキーム**: `review-raven://watch/{watch_id}`
 - **認証**: mcp-gateway 経由の gateway 委任（`X-Authenticated-User` + `Authorization` ヘッダー）
 
+## Migration / 互換性
+
+### Resource URI スキーム
+
+新しく生成される watch URI は `review-raven://watch/{id}` を canonical とする。
+
+旧スキーム `copilot-review://watch/{id}` は read / subscribe の **deprecated alias** として当面受け付ける。これにより、改名前に生成された URI を持つクライアントや DB がデータ移行なしに継続動作できる。
+
+- `resourceURIForWatch()` が生成する新規 URI は canonical スキームのみ。
+- `parseWatchIDFromURI()` および `SubscribeHandler` は両スキームを受け付ける。
+- legacy alias の削除は別 issue で追跡する（[review-raven #65](https://github.com/scottlz0310/review-raven/issues/65)、別途起票）。
+
+### 環境変数
+
+`REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET` が正式名。旧名 `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` は fallback として引き続き動作する。
+
+### MCP ツール名
+
+公開 API 互換維持のため、ツール名（`request_copilot_review`、`start_copilot_review_watch` 等）は変更しない。
+
 ## pr-review-subscribe skill との関係
 
 `pr-review-subscribe` skill は review 取得・スレッド処理・修正 workflow を統合する上位 workflow である。review-raven はその中で reviewed-side MCP provider として機能する。

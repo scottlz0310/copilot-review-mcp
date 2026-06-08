@@ -291,11 +291,18 @@ func TestParseWatchIDFromURI(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
+		// canonical scheme
 		{uri: "review-raven://watch/cw_123_1", want: "cw_123_1"},
 		{uri: "review-raven://watch/abc", want: "abc"},
 		{uri: "review-raven://watch/", wantErr: true},
 		{uri: "review-raven://watch/a/b", wantErr: true},
 		{uri: "review-raven://watch/a?x=1", wantErr: true},
+		// deprecated legacy scheme (backward compat)
+		{uri: "copilot-review://watch/cw_123_1", want: "cw_123_1"},
+		{uri: "copilot-review://watch/abc", want: "abc"},
+		{uri: "copilot-review://watch/", wantErr: true},
+		{uri: "copilot-review://watch/a/b", wantErr: true},
+		// other
 		{uri: "other://watch/abc", wantErr: true},
 	}
 	for _, tc := range tests {

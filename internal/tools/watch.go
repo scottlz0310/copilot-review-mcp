@@ -493,13 +493,22 @@ func RegisterWatchResources(server *mcp.Server, manager *watch.Manager) {
 	})
 }
 
-// parseWatchIDFromURI extracts the watch ID from a review-raven://watch/{id} URI.
+// parseWatchIDFromURI extracts the watch ID from a watch resource URI.
+// The canonical scheme is review-raven://watch/{id}.
+// The legacy scheme copilot-review://watch/{id} is accepted as a deprecated alias
+// to support clients and databases that still carry the old URI (see docs/architecture.md).
 func parseWatchIDFromURI(uri string) (string, error) {
-	const prefix = "review-raven://watch/"
-	if !strings.HasPrefix(uri, prefix) {
+	const canonical = "review-raven://watch/"
+	const legacy = "copilot-review://watch/"
+	var id string
+	switch {
+	case strings.HasPrefix(uri, canonical):
+		id = strings.TrimPrefix(uri, canonical)
+	case strings.HasPrefix(uri, legacy):
+		id = strings.TrimPrefix(uri, legacy)
+	default:
 		return "", fmt.Errorf("invalid watch URI: %q", uri)
 	}
-	id := strings.TrimPrefix(uri, prefix)
 	if id == "" || strings.ContainsAny(id, "/?#") {
 		return "", fmt.Errorf("invalid watch ID in URI: %q", uri)
 	}

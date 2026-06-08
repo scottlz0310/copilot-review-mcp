@@ -20,6 +20,8 @@
   - SQLite デフォルトパス変更: `/data/copilot-review.db` → `/data/review-raven.db`（`SQLITE_PATH` 環境変数で上書き可能）
   - Docker イメージ・コンテナ・ボリューム名変更: `copilot-review-mcp` → `review-raven`、`copilot-review-data` → `review-raven-data`
   - `docs/architecture.md` を新規追加: review される側 MCP server としての位置づけと、Thread Owl・mcp-resource-subscriber との責務境界を文書化
+  - `.env.template` を更新: 正式な `REVIEW_RAVEN_*` 変数名に統一し、旧 `COPILOT_REVIEW_*` を migration / compatibility セクションに移動
+  - 旧 URI スキーム `copilot-review://watch/{id}` を deprecated read/subscribe alias として受け付けるよう対応。新規 URI は `review-raven://watch/{id}` のみ生成
 
 ## [3.2.0] - 2026-05-18
 
