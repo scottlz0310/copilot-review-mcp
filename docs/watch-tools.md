@@ -36,7 +36,7 @@ Watch tools return `recommended_next_action` and, when relevant, `next_poll_seco
 - `POLL_AFTER`
   The watch is still in progress. Re-check the same watch after `next_poll_seconds` seconds.
 - `READ_REVIEW_THREADS`
-  The Copilot review has reached `COMPLETED` or `BLOCKED`. Proceed to `get_review_threads` or similar.
+  The review has reached `COMPLETED` or `BLOCKED`. Proceed to `get_review_threads` or similar.
 - `START_NEW_WATCH`
   The current watch will not continue. Re-check with `get_copilot_review_status` if needed, then start a new watch.
   If `RATE_LIMITED`, `next_poll_seconds` indicates when to retry.

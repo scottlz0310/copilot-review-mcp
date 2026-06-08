@@ -223,7 +223,7 @@ $pr-review-cycle
 
 The skill should:
 
-1. Check or request a Copilot review.
+1. Check or request a review.
 2. Wait for completion with async watch.
 3. Fetch review threads.
 4. Classify comments.

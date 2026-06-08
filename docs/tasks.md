@@ -1,110 +1,103 @@
 # review-raven 改善タスク一覧
 
-> **Archived.** This document was written against the legacy `scottlz0310/Mcp-Docker` monorepo.
-> All issues referenced here (#55–#58 in Mcp-Docker, #63–#68 in Mcp-Docker) have since been
-> implemented in this repository as part of the async watch redesign.
-> The steps and recommendations below are preserved for historical context only and should
-> **not** be treated as pending work.
+## ドキュメント一般化計画（ISSUE#63 後続）
 
-未整理だったツール動作の調査を経て特定した改善ISSUEと、推奨消化順をまとめる。
+ISSUE#63 は PR#64 でクローズ済み。`docs/architecture.md` / `docs/architecture.ja.md` は更新完了。
+以下のファイルに「Copilot をメインターゲットとする記述」が残っているため、reviewed-side MCP としての
+再定義コンセプトに合わせて一般化する。
 
-## 長期 redesign
-
-`wait_for_copilot_review` を中心とした現行の blocking wait モデルを、
-LLM 向けの async watch + notification モデルへ置き換える大きめの redesign を別系統で起票した。
-
-- [#63](https://github.com/scottlz0310/Mcp-Docker/issues/63): epic(review-raven): async watch + notification ベースへ再設計し blocking wait を主経路から外す
-- [#68](https://github.com/scottlz0310/Mcp-Docker/issues/68): memory-only watch manager を先行導入し active watch を idempotent に扱う
-- [#65](https://github.com/scottlz0310/Mcp-Docker/issues/65): SQLite 永続化で review_watch state を追加する
-- [#67](https://github.com/scottlz0310/Mcp-Docker/issues/67): watch 系ツールを追加し `wait_for_copilot_review` を legacy 化する
-- [#64](https://github.com/scottlz0310/Mcp-Docker/issues/64): Streamable HTTP を stateful session 化し async notification の基盤を作る
-- [#66](https://github.com/scottlz0310/Mcp-Docker/issues/66): watch resource と resources/updated 通知を追加する
-
-設計メモ:
-
-`docs/design/watch-redesign.md`
-
-現在の watch tool 運用メモ:
-
-`docs/watch-tools.md`
-
-> この redesign は既存の局所修正（#55, #56, #57, #58）とは別トラックで進める想定。
-> 実装に着手する際は、`wait_for_copilot_review` 周辺の重複改修を避けるため、
-> 先にどちらの路線で進めるかを決める。
-
-review 反映メモ:
-
-- active watch は `(github_login, owner, repo, pr)` 単位で 1 本に制約し、`start_*` は idempotent にする
-- token 失効は `FAILED` + `failure_reason=AUTH_EXPIRED` として扱う
-- worker 喪失や再起動の影響を表す `STALE` 状態を設ける
-- stateful session 化は先行せず、まず memory-only watch manager → SQLite persistence → tool UX の順で進める
-
-推奨順:
-
-1. [#68](https://github.com/scottlz0310/Mcp-Docker/issues/68) memory-only watch manager
-2. [#65](https://github.com/scottlz0310/Mcp-Docker/issues/65) SQLite persistence
-3. [#67](https://github.com/scottlz0310/Mcp-Docker/issues/67) watch tool surface / migration
-4. [#64](https://github.com/scottlz0310/Mcp-Docker/issues/64) stateful session foundation
-5. [#66](https://github.com/scottlz0310/Mcp-Docker/issues/66) resources / notifications
-
-## 推奨消化順
-
-### Step 1 — #56: `wait_for_copilot_review` の動作改善
-
-**他ISSUEへの依存なし。最も独立しており、影響範囲も限定的なため先行着手を推奨。**
-
-- TIMEOUT 後に不要な追加 API コール（`GetReviewData` が重複実行される）を除去する
-- コンテキストキャンセル時に進捗情報（PollsDone / WaitedSeconds）が失われる問題を修正する
-
-> 対象ファイル: `internal/tools/wait.go`
+**変更しないもの**: ツール名（`request_copilot_review`、`get_copilot_review_status`、`start_copilot_review_watch` 等）は公開 API 互換維持のため変更しない（`docs/architecture.md#migration--compatibility` 参照）。
 
 ---
 
-### Step 2 — #57: `get_pr_review_cycle_status` の入力依存問題
+### 高優先度 — メインの誤ったフレーミング
 
-**Step 1 と並行可能。#58 の設計変更とは独立して対応できる。**
+#### `README.md` L3
 
-- `ci_all_success` が手動入力依存のため誤判定リスクがある（GitHub Checks API 自動取得を検討）
-- `last_comment_at` が省略されると `terminateCond2` が常に無効になる（スレッドから自動算出を検討）
+```
+変更前:
+An MCP (Model Context Protocol) server that manages GitHub Copilot PR review cycles.
+Provides review request, completion detection, staleness detection, and thread reply/resolve
+through an **async watch + notification** model designed for LLM agents.
 
-> 対象ファイル: `internal/tools/cycle.go`
+変更後（案）:
+An MCP (Model Context Protocol) server for the **reviewed side** of a PR review workflow.
+Reads review threads, replies, resolves, and requests re-review — regardless of whether the
+review came from Copilot, a human reviewer, or a bot. Built on an **async watch + notification**
+model designed for LLM agents.
+```
 
----
+#### `README.ja.md` L6
 
-### Step 3 — #55: `get_copilot_review_status` の `blockingThreadCount` バグ
+```
+変更前:
+GitHub Copilot の PR レビューサイクルを管理する MCP（Model Context Protocol）サーバー。
+レビュー依頼・完了検知・staleness 判定・スレッド返信／解決までを LLM 向けの
+async watch + notification モデルで提供する。
 
-**#58 の設計確定を待ってから対応する。**
-
-`blockingThreadCount` フィールドが常に `0` を返すバグだが、#58 の設計変更によってこのフィールド自体が廃止される可能性がある。
-`blockingCount` の責務をMCPサーバーが持つか否かの方針が固まってから修正または廃止を決定する。
-
-> 対象ファイル: `internal/tools/status.go`, `wait.go`
-
----
-
-### Step 4 — #58 \[DRAFT\]: スレッド分類をLLMルールファイルベースへ移行
-
-**ルールファイル確定後に着手。最も影響範囲が広いため最後に実施。**
-
-- `classifyThread()` および `blockingKeywords` 等のキーワード辞書を MCPサーバーから削除する
-- `get_review_threads` のレスポンスから `classification` / `classificationReason` / `summary` フィールドを廃止し、Raw コメントデータのみを返す
-- `get_pr_review_cycle_status` の分類サマリ関連フィールドと `blockingCount` 計算をMCPサーバーから除去し、LLMがルールファイルに基づいて判断する設計に変更する
-- Step 3（#55）の `blockingThreadCount` 廃止もここで合わせて対応する
-
-> 対象ファイル: `internal/tools/threads.go`, `cycle.go`, `status.go`, `wait.go`
-
-**TODO（ルールファイル確定後に記入）:**
-- [ ] ルールファイルのパス:
-- [ ] blocking / non-blocking / suggestion の判断基準（日英両対応）:
-- [ ] READMEまたはCLAUDE.mdへの記載箇所:
+変更後（案）:
+PR レビューを受けて直す側の MCP（Model Context Protocol）サーバー。
+Copilot review・human reviewer・bot reviewer を問わず、review thread の読み取り・返信・
+resolve・再レビュー依頼を LLM 向けの async watch + notification モデルで提供する。
+```
 
 ---
 
-## ISSUE 一覧
+### 中優先度 — スキルドキュメントの Copilot 固有表現
 
-| ISSUE | 種別 | タイトル | 推奨順 |
-|---|---|---|---|
-| [#55](https://github.com/scottlz0310/Mcp-Docker/issues/55) | bug | `get_copilot_review_status` の `blockingThreadCount` が常に 0 | Step 3 |
-| [#56](https://github.com/scottlz0310/Mcp-Docker/issues/56) | enhancement | `wait_for_copilot_review` のTIMEOUT後の余分なAPIコールとキャンセル時の情報欠落 | Step 1 |
-| [#57](https://github.com/scottlz0310/Mcp-Docker/issues/57) | enhancement | `get_pr_review_cycle_status` の `ci_all_success` 手動依存と `last_comment_at` 問題 | Step 2 |
-| [#58](https://github.com/scottlz0310/Mcp-Docker/issues/58) | refactor \[DRAFT\] | スレッド分類ロジックをMCPサーバーから除去しLLMルールファイルベースへ移行 | Step 4 |
+#### `docs/skills/pr-review-cycle.md`
+
+| 箇所 | 変更前 | 変更後（案） |
+|---|---|---|
+| frontmatter `description` | "Waits for Copilot review completion via async watch polling" | "Waits for review completion via async watch polling" |
+| L11 本文 | "wait for Copilot review completion via **async watch polling**" | "wait for review completion via **async watch polling**" |
+| L29 セットアップ表 | "Copilot review watch & thread operations" | "Review watch & thread operations" |
+| L99（1-C タイムアウト投稿文） | "Copilot review completion wait timed out after 15 minutes." | "Review completion wait timed out after 15 minutes." |
+| L329 ツール対応表 | "Instant check of Copilot review state on GitHub" | "Instant check of review state on GitHub" |
+| L330 ツール対応表 | "Request a Copilot review" | "Request a review" |
+
+#### `docs/skills/pr-review-cycle.ja.md`
+
+| 箇所 | 変更前 | 変更後（案） |
+|---|---|---|
+| frontmatter `description` | "Copilot レビュー完了を async watch ポーリング（...）で待機してから" | "レビュー完了を async watch ポーリング（...）で待機してから" |
+| L10-11 本文 | "Copilot レビュー完了を **async watch ポーリング**で待機してから" | "レビュー完了を **async watch ポーリング**で待機してから" |
+| L29 セットアップ表 | "Copilot レビュー watch・スレッド操作" | "レビュー watch・スレッド操作" |
+| L103（1-C タイムアウト投稿文） | "Copilot レビュー完了待機がタイムアウトしました（15 分）。" | "レビュー完了待機がタイムアウトしました（15 分）。" |
+| L341 ツール対応表 | "GitHub 上の Copilot レビュー状態を即時確認" | "GitHub 上のレビュー状態を即時確認" |
+| L342 ツール対応表 | "Copilot レビューを依頼" | "レビューを依頼" |
+
+---
+
+### 低優先度 — 単語レベル
+
+#### `docs/watch-tools.md` L39
+
+```
+変更前: The Copilot review has reached `COMPLETED` or `BLOCKED`.
+変更後: The review has reached `COMPLETED` or `BLOCKED`.
+```
+
+#### `docs/watch-tools.ja.md` L39
+
+```
+変更前: Copilot review が `COMPLETED` または `BLOCKED` に到達した。
+変更後: review が `COMPLETED` または `BLOCKED` に到達した。
+```
+
+#### `docs/usage.md` L225
+
+```
+変更前: 1. Check or request a Copilot review.
+変更後: 1. Check or request a review.
+```
+
+#### `docs/usage.ja.md` L227
+
+```
+変更前: 1. Copilot review の状態確認または依頼
+変更後: 1. レビューの状態確認または依頼
+```
+
+
+> 旧内容は `docs/archive/tasks-legacy-2026_06_08.md` に退避済み。
