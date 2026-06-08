@@ -232,8 +232,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 				}
 				uri := req.Params.URI
 				const watchPrefix = "review-raven://watch/"
-				const legacyWatchPrefix = "copilot-review://watch/"
-				if !strings.HasPrefix(uri, watchPrefix) && !strings.HasPrefix(uri, legacyWatchPrefix) {
+				if !strings.HasPrefix(uri, watchPrefix) {
 					return nil // not a watch URI; allow subscription for other resource types
 				}
 				// URI has the watch prefix — parse it strictly so malformed URIs are rejected.

@@ -56,17 +56,11 @@ Copilot review は取得 provider の一つであり、このリポジトリの�
 
 ### Resource URI スキーム
 
-新しく生成される watch URI は `review-raven://watch/{id}` を canonical とする。
-
-旧スキーム `copilot-review://watch/{id}` は read / subscribe の **deprecated alias** として当面受け付ける。これにより、改名前に生成された URI を持つクライアントや DB がデータ移行なしに継続動作できる。
-
-- `resourceURIForWatch()` が生成する新規 URI は canonical スキームのみ。
-- `parseWatchIDFromURI()` および `SubscribeHandler` は両スキームを受け付ける。
-- legacy alias の削除は別 issue で追跡する（[review-raven #66](https://github.com/scottlz0310/review-raven/issues/66)）。
+watch resource のスキームは `review-raven://watch/{id}`。改名前に使われていた旧スキーム `copilot-review://watch/{id}` は**受け付けない**。`copilot-review-mcp` からアップグレードした場合、active な watch は再依頼が必要。
 
 ### 環境変数
 
-`REVIEW_RAVEN_GATEWAY_INTERNAL_URL/SECRET` が正式名。旧名 `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` は fallback として引き続き動作する。
+`REVIEW_RAVEN_GATEWAY_INTERNAL_URL` と `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` のみサポート。旧名 `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` は**読まれない**。
 
 ### MCP ツール名
 
