@@ -1,6 +1,6 @@
 ---
 name: thread-owl-review-cycle
-description: "Reviewed-side cycle for thread-owl reviewers. Reads thread-owl review threads, classifies & fixes, replies, resolves, then posts @thread-owl re-review requested when re-review is needed. Invoke after mcp-resource-subscriber detects a queue://review/queue update, or when existing thread-owl review threads are present."
+description: "Reviewed-side cycle for thread-owl reviewers. Reads thread-owl review threads, classifies & fixes, replies, resolves, then posts @thread-owl re-review requested when re-review is needed. Invoke when thread-owl has posted a new review (review threads are present in the PR)."
 ---
 
 # thread-owl-review-cycle Skill
@@ -11,9 +11,9 @@ description: "Reviewed-side cycle for thread-owl reviewers. Reads thread-owl rev
 > This skill handles the reviewed-side cycle when the reviewer is **thread-owl**.
 > For **Copilot** reviews (async watch polling), use [`pr-review-cycle`](pr-review-cycle.md) instead.
 
-A skill for the reviewed-side cycle when thread-owl is the reviewer. There is no Copilot watch loop. Entry is triggered by a `queue://review/queue` resource update (via `mcp-resource-subscriber`) or by the presence of existing thread-owl review threads.
+A skill for the reviewed-side cycle when thread-owl is the reviewer. There is no Copilot watch loop. Entry is triggered when thread-owl posts a new review (unresolved thread-owl review threads are present in the PR). Invoke this skill after receiving a thread-owl review notification.
 
-Re-review requests are posted as `@thread-owl re-review requested` PR comments — the reviewed-side cycle ends there. The next reviewer-side cycle is triggered by thread-owl's webhook.
+Re-review requests are posted as `@thread-owl re-review requested` PR comments — the reviewed-side cycle ends there. The next reviewer-side cycle is triggered by thread-owl detecting the comment via its `issue_comment.created` webhook, which enqueues a `re-review-requested` candidate and notifies `queue://review/re-review-requests` subscribers (reviewer-side).
 
 > **About this file**
 > `docs/skills/thread-owl-review-cycle.md` is a shared template for this repository.
