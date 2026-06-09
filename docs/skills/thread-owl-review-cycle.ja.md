@@ -1,6 +1,6 @@
 ---
 name: thread-owl-review-cycle
-description: "thread-owl レビュー用の reviewed-side cycle スキル。thread-owl のレビュースレッドを読み、分類・修正・返信・resolve を行い、再レビューが必要な場合は @thread-owl re-review requested コメントを投稿して cycle を完了する。mcp-resource-subscriber が queue://review/queue 更新を検知した後、または既存の thread-owl レビュースレッドがある状態で呼び出す。"
+description: "thread-owl レビュー用の reviewed-side cycle スキル。thread-owl のレビュースレッドを読み、分類・修正・返信・resolve を行い、再レビューが必要な場合は @thread-owl re-review requested コメントを投稿して cycle を完了する。mcp-resource-subscriber が queue://review/re-review-requests 更新を検知した後、または既存の thread-owl レビュースレッドがある状態で呼び出す。"
 ---
 
 # thread-owl-review-cycle スキル
@@ -11,7 +11,9 @@ description: "thread-owl レビュー用の reviewed-side cycle スキル。thre
 > このスキルは reviewer が **thread-owl** の場合の reviewed-side cycle を担当する。
 > **Copilot** review（async watch ポーリング）には [`pr-review-cycle`](pr-review-cycle.ja.md) を使うこと。
 
-thread-owl がレビュアーの場合に reviewed-side cycle を実行するスキル。Copilot watch ループはない。エントリーは `mcp-resource-subscriber` による `queue://review/queue` resource 更新の検知、または既存の thread-owl レビュースレッドの確認によって行う。
+thread-owl がレビュアーの場合に reviewed-side cycle を実行するスキル。Copilot watch ループはない。エントリーは `mcp-resource-subscriber` による `queue://review/re-review-requests` resource 更新の検知、または既存の thread-owl レビュースレッドの確認によって行う。
+
+> **Subscriber URI**: `queue://review/queue` ではなく `queue://review/re-review-requests` を使用すること。re-review-requests リソースは `re-review-requested` イベント時のみ通知するため、commit push による `synchronized` webhook が先着しても subscriber が早期終端しない（push-first early termination を防ぐ）。
 
 再レビュー依頼は `@thread-owl re-review requested` PR コメントとして投稿する。reviewed-side cycle はそこで完了し、次の reviewer-side cycle は thread-owl の webhook が起動する。
 
