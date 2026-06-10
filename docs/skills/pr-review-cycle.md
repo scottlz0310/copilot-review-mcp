@@ -45,13 +45,15 @@ This skill relies only on MCP tools — no `mcp-resource-subscriber` or other su
 ## Overall Flow
 
 ```
-Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
-                ↑                                              ↓ WAIT / REQUEST_REREVIEW
-                └──────────────────────────────────────────────┘
-                                        ↓ READY_TO_MERGE
-                              Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
-                                        ↓ ESCALATE
-                              End (report to user)
+Phase 0 → Phase 1 (MCP polling) ──┐
+        OR Phase 1S (subscriber) ─┤
+                                   ↓ Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
+                              Phase 1 ↑                                        ↓ WAIT / REQUEST_REREVIEW
+                                      └────────────────────────────────────────┘
+                                                          ↓ READY_TO_MERGE
+                                            Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
+                                                          ↓ ESCALATE
+                                                End (report to user)
 ```
 
 ---
@@ -101,6 +103,58 @@ Follow `recommended_next_action`:
 2. Post via `{GH}:add_issue_comment`:
    `Review completion wait timed out after 15 minutes. Please resume manually.`
 3. Guide the user on how to resume manually and exit.
+
+## Phase 1S: Subscription-based Wait (mcp-resource-subscriber)
+
+**Alternative to Phase 1-A/1-B/1-C.** Use when `mcp-resource-subscriber` is installed and preferred over MCP watch polling. Replaces Phase 1 in its entirety.
+
+> Use `pr-review-cycle` (Phase 1 polling) when `mcp-resource-subscriber` is unavailable.
+
+### 1S-B1: Subscribe & Wait
+
+```bash
+mcp-resource-subscriber \
+  --url <review-raven MCP URL> \
+  --uri queue://review/queue \
+  --timeout-ms 900000 \
+  --json
+```
+
+Parse stdout as JSON. Success response:
+
+```json
+{
+  "route": "subscription",
+  "serverUrl": "http://localhost:3000/mcp",
+  "resourceUri": "queue://review/queue",
+  "subscribed": true,
+  "notificationReceived": true,
+  "notificationCount": 1,
+  "errorCode": null,
+  "recommendedNextAction": "READ_REVIEW_THREADS",
+  "finalText": "..."
+}
+```
+
+Follow `json.recommendedNextAction`:
+
+| recommendedNextAction | Action |
+|-----------------------|--------|
+| `READ_REVIEW_THREADS` | → Phase 2 |
+
+### 1S-C: Error & Timeout Handling
+
+Determine outcome from JSON fields:
+
+| Condition | Action |
+|-----------|--------|
+| `json.route === "timeout" && json.errorCode === "NOTIFICATION_TIMEOUT"` | Post timeout comment and guide user to resume manually |
+| `json.errorCode === "SERVER_URL_UNKNOWN"` | Report invalid server URL and abort |
+| `json.errorCode === "INTERNAL_ERROR"` | Report error and abort |
+
+`json.serverUrl` and `json.resourceUri` are preserved even on failure — include them in error reports for diagnostics.
+
+Do not treat timeout or error as review completion.
 
 ## Phase 2: Fetch Threads
 
