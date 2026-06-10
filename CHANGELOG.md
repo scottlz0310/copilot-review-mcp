@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/skills/pr-review-cycle.md` / `.ja.md` — added **Phase 1S** (subscription-based wait using `mcp-resource-subscriber --json`) as an alternative to the MCP polling Phase 1. Updated Overall Flow diagram to reflect the two-path entry. ([Issue #74](https://github.com/scottlz0310/review-raven/issues/74))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — explicitly scoped to **Copilot review only**. Phase 6 `REQUEST_REREVIEW` reverted to `request_copilot_review` + Copilot watch loop (as originally designed). Added scope callout and `## See Also` link to `thread-owl-review-cycle`. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge). ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 

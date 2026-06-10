@@ -46,13 +46,15 @@ MCP ツールのみを使用し、`mcp-resource-subscriber` などのサブス�
 ## 全体フロー
 
 ```
-Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
-                ↑                                              ↓ WAIT / REQUEST_REREVIEW
-                └──────────────────────────────────────────────┘
-                                        ↓ READY_TO_MERGE
-                              Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
-                                        ↓ ESCALATE
-                                      終了（ユーザーに報告）
+Phase 0 → Phase 1（MCP ポーリング）──┐
+        OR Phase 1S（サブスクリプション）┤
+                                       ↓ Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
+                                Phase 1 ↑                                          ↓ WAIT / REQUEST_REREVIEW
+                                        └──────────────────────────────────────────┘
+                                                            ↓ READY_TO_MERGE
+                                              Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
+                                                            ↓ ESCALATE
+                                                        終了（ユーザーに報告）
 ```
 
 ---
@@ -104,6 +106,58 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
 2. `{GH}:add_issue_comment` で以下を投稿:
    `レビュー完了待機がタイムアウトしました（15 分）。手動で再開してください。`
 3. ユーザーに手動再開方法を案内して終了。
+
+## Phase 1S: サブスクリプション方式の待機（mcp-resource-subscriber）
+
+**Phase 1-A/1-B/1-C の代替。** `mcp-resource-subscriber` がインストール済みで MCP watch ポーリングより優先して使う場合に利用する。Phase 1 全体を置き換える。
+
+> `mcp-resource-subscriber` が利用できない環境では Phase 1（ポーリング）の `pr-review-cycle` を使う。
+
+### 1S-B1: サブスクライブ＆待機
+
+```bash
+mcp-resource-subscriber \
+  --url <review-raven MCP URL> \
+  --uri queue://review/queue \
+  --timeout-ms 900000 \
+  --json
+```
+
+stdout を JSON としてパースする。成功時レスポンス:
+
+```json
+{
+  "route": "subscription",
+  "serverUrl": "http://localhost:3000/mcp",
+  "resourceUri": "queue://review/queue",
+  "subscribed": true,
+  "notificationReceived": true,
+  "notificationCount": 1,
+  "errorCode": null,
+  "recommendedNextAction": "READ_REVIEW_THREADS",
+  "finalText": "..."
+}
+```
+
+`json.recommendedNextAction` に従う:
+
+| recommendedNextAction | 対応 |
+|-----------------------|------|
+| `READ_REVIEW_THREADS` | → Phase 2 へ |
+
+### 1S-C: エラー・タイムアウト処理
+
+JSON フィールドから結果を判定する:
+
+| 条件 | 対応 |
+|------|------|
+| `json.route === "timeout" && json.errorCode === "NOTIFICATION_TIMEOUT"` | タイムアウトコメントを投稿してユーザーに手動再開を案内 |
+| `json.errorCode === "SERVER_URL_UNKNOWN"` | サーバー URL の不正を報告してサイクル中断 |
+| `json.errorCode === "INTERNAL_ERROR"` | エラーを報告してサイクル中断 |
+
+失敗時も `json.serverUrl` および `json.resourceUri` は保持される — 診断用にエラー報告に含める。
+
+timeout や error をレビュー完了として扱わない。
 
 ## Phase 2: スレッド取得
 
