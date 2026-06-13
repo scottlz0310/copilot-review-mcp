@@ -32,14 +32,16 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 | サーバー | 役割 | 参照 |
 |---------|------|------|
 | `github` | PR コメント投稿・Issue 作成 | [README.ja.md](../../README.ja.md) |
+| `review-raven` | PR レビュースレッドの取得・返信・解決 | [README.ja.md](../../README.ja.md) |
 
-> このスキルでは `review-raven` MCP ツールは使用しない。スレッドの読み取りは `gh` CLI（GraphQL）で行う。
+> このスキルでは `review-raven` MCP ツールを使用してスレッドの取得・返信・解決を行う。
 
 ### プレースホルダーの読み替え
 
 | プレースホルダー | 役割 | 例 |
 |----------------|------|-----|
 | `{GH}` | `github` サーバーツール | `mcp__github__*` |
+| `{RAVEN}` | `review-raven` サーバーツール | `mcp__review-raven__*` |
 
 ---
 
@@ -74,42 +76,14 @@ Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U
    - 見つからない場合: `cycles_done = 0`。
 4. Phase U2 へ進む。
 
-## Phase U2: スレッド取得
+`{RAVEN}:get_review_threads` を実行して全レビュースレッドを取得する:
+- `owner`: `<owner>`
+- `repo`: `<repo>`
+- `pr`: `<pr>`
 
-ページネーション付き GraphQL で全レビュースレッドを取得する:
-
-```bash
-gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviewThreads(first: 100, after: $cursor) {
-          pageInfo { hasNextPage endCursor }
-          nodes {
-            id
-            isResolved
-            comments(first: 10) {
-              nodes {
-                databaseId
-                body
-                path
-                line
-                author { login }
-                createdAt
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-' -f owner=<owner> -f repo=<repo> -F pr=<pr>
-```
-
-- `pageInfo.hasNextPage` が `true` の場合、`-f cursor=<endCursor>` で繰り返して全件取得する。
 - `isResolved = false` のすべてのスレッド（inline thread）を収集する。author（`thread-owl`、`thread-owl[bot]`、repository owner、GitHub App、Copilot、human reviewer等）にかかわらず、未解決の指摘はすべて対象とする。
 - また、スレッド（inline thread）形式になっていない、review body や PR コメント（issue comment）に含まれる actionable な（対応が必要な）指摘も収集対象に含める。
-- 各スレッドの `id`（PRRT ノード ID — resolve mutation 用）とルートコメントの `databaseId`（返信用）を記録する。review body などのスレッドになっていないコメントは、必要に応じて返信先（コメントID）や Issue 化の対象として記録する。
+- 各スレッドの `id`（PRRT ノード ID — resolve 用）を記録する。review body などのスレッドになっていないコメントは、必要に応じて返信先（コメントID）や Issue 化の対象として記録する。
 - 未解決の review 指摘（スレッドおよび review body 等の actionable 指摘）が 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
 - 1 件以上: **Phase 3** へ進む。
 
@@ -156,25 +130,13 @@ gh api graphql -f query='
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
 6. ユーザーが明示的に求めない限り force push しない。
 
-## Phase U5: 返信＋resolve
+**返信＋resolve**:
+スレッドへの返信および解決（resolve）は、`{RAVEN}:reply_and_resolve_review_thread` を使用して順次実行する：
+- `threadId`: Phase U2 で取得したスレッド ID（PRRT_xxx）
+- `body`: 返信内容（修正内容の報告、または reject 時の理由）
+- `resolve`: `true`（解決する場合）、`false`（解決しない場合）
 
-**返信**: `{GH}:add_reply_to_pull_request_comment` を使う:
-- `owner`、`repo`、`pull_number`: Phase 0 で確定した値
-- `comment_id`: Phase U2 のルートコメント `databaseId`
-- 修正済み: コミットと具体的な修正内容を言及する。
-- reject: 理由を明確に述べる（下記 reject 返信ルール参照）。
-
-**resolve**: GraphQL mutation で実行する:
-
-```bash
-gh api graphql -f query='
-  mutation($threadId: ID!) {
-    resolveReviewThread(input: {threadId: $threadId}) {
-      thread { id isResolved }
-    }
-  }
-' -f threadId=<PRRT_node_id>
-```
+※返信のみを行う場合は `{RAVEN}:reply_to_review_thread` を、解決のみを行う場合は `{RAVEN}:resolve_review_thread` を個別に使用してもよい。
 
 Issue 作成・リンクが不可能な場合を除き常に resolve する。
 
@@ -326,8 +288,11 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 | ツール | 用途 |
 |-------|------|
-| `gh` CLI | GraphQL スレッド取得・resolve mutation・CI 確認 |
-| `{GH}:add_reply_to_pull_request_comment` | レビュースレッドに返信 |
+| `{RAVEN}:get_review_threads` | PR の全レビュースレッドの取得 |
+| `{RAVEN}:reply_and_resolve_review_thread` | スレッドへの返信と解決を同時に実行 |
+| `{RAVEN}:reply_to_review_thread` | レビュースレッドに返信 |
+| `{RAVEN}:resolve_review_thread` | レビュースレッドを解決済みにする |
+| `gh` CLI | CI 確認 (GraphQL スレッド取得・resolve は `{RAVEN}` で代替) |
 | `{GH}:add_issue_comment` | PR サマリ・再レビュー依頼コメント投稿 |
 | `{GH}:create_issue` | フォローアップトラッキング Issue を作成 |
 

@@ -15,7 +15,7 @@
 
 ### 変更
 
-- `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — 投稿者を問わずすべての未解決レビュー指摘（インラインスレッドおよび review body 等の指摘）に対応するよう更新。インストール済みSkillテンプレートへの更新手順を追記。([Issue #76](https://github.com/scottlz0310/review-raven/issues/76))
+- `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — 投稿者を問わずすべての未解決レビュー指摘（インラインスレッドおよび review body 等の指摘）に対応するよう更新。スレッドの取得・返信・解決に `gh` CLI（GraphQL）ではなく `review-raven` MCP ツール（`get_review_threads`, `reply_and_resolve_review_thread`等）を使用するように更新。インストール済みSkillテンプレートへの更新手順を追記。([Issue #76](https://github.com/scottlz0310/review-raven/issues/76))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — MCP ポーリング Phase 1 の代替として **Phase 1S**（`mcp-resource-subscriber --json` を使うサブスクリプション方式）を追加。全体フロー図を 2 経路エントリに更新。([Issue #74](https://github.com/scottlz0310/review-raven/issues/74))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — **Copilot review 専用** スキルとして明示的にスコープを限定。Phase 6 `REQUEST_REREVIEW` を `request_copilot_review` + Copilot watch ループ（当初設計）に戻した。スコープ注意書きと `## 関連スキル`（`thread-owl-review-cycle` へのリンク）を追加。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
