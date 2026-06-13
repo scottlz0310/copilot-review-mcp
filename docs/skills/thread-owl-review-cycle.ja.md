@@ -17,8 +17,11 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 
 > **このファイルについて**
 > `docs/skills/thread-owl-review-cycle.ja.md` はリポジトリ共有用テンプレートです。
-> 個人の AI エージェント設定（`~/.claude/skills/` 等）にコピーしてご利用ください。
+> 個人の AI エージェント設定（`~/.gemini/antigravity-cli/skills/` や `~/.claude/skills/` 等）にコピーしてご利用ください。
 > MCP サーバーキーはお使いの環境に合わせて読み替えてください。
+> 
+> **インストール済みSkillの更新手順**
+> すでに個人の AI エージェント設定に本スキルをインストールしている場合、この最新のテンプレートファイルの内容でインストール先の `SKILL.md` を上書きして更新を反映してください。
 
 ---
 
@@ -29,14 +32,16 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 | サーバー | 役割 | 参照 |
 |---------|------|------|
 | `github` | PR コメント投稿・Issue 作成 | [README.ja.md](../../README.ja.md) |
+| `review-raven` | PR レビュースレッドの取得・返信・解決 | [README.ja.md](../../README.ja.md) |
 
-> このスキルでは `review-raven` MCP ツールは使用しない。スレッドの読み取りは `gh` CLI（GraphQL）で行う。
+> このスキルでは、第一選択として `review-raven` MCP ツールを使用してスレッドの取得・返信・解決を行います。MCP ツールが利用不可能な場合のフォールバックとして `gh` CLI（GraphQL/REST API）を使用します。
 
 ### プレースホルダーの読み替え
 
 | プレースホルダー | 役割 | 例 |
 |----------------|------|-----|
 | `{GH}` | `github` サーバーツール | `mcp__github__*` |
+| `{RAVEN}` | `review-raven` サーバーツール | `mcp__review-raven__*` |
 
 ---
 
@@ -65,16 +70,23 @@ Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U
 
 1. `owner`、`repo`、`pr` を確定する。
 2. `max_cycles = 3` を設定する（必要に応じて調整）。
-3. `cycles_done` を PR コメント履歴から復元する:
-   - PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N -->` を見つける。
-   - 見つかった場合: `cycles_done = N + 1`。
-   - 見つからない場合: `cycles_done = 0`。
+3. `cycles_done` と `handled_comments`（処理済みの非スレッドコメントID）を PR コメント履歴から復元する:
+   - PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->`（または `cycles_done=N` 単体）を見つける。
+   - `cycles_done`: 見つかった場合 `N + 1`、見つからない場合 `0`。
+   - `handled_comments`: アノテーション内の `handled_comments` にリストされているID群を記録してセット（既処理リスト）を作成する。見つからない場合は空。
 4. Phase U2 へ進む。
 
-## Phase U2: スレッド取得
+## Phase U2: レビュー指摘の収集
 
-ページネーション付き GraphQL で全レビュースレッドを取得する:
+以下の3つの手段を用いて、PRに投稿されたすべての指摘を収集します。
 
+### 1. インラインレビュースレッドの取得
+**第一選択 (review-raven MCP)**: `{RAVEN}:get_review_threads` を実行して全レビュースレッドを取得します:
+- `owner`: `<owner>`
+- `repo`: `<repo>`
+- `pr`: `<pr>`
+
+**フォールバック (gh CLI)**: MCP ツールが使用できない場合は、GraphQL を用いて `gh` CLI で全レビュースレッドを取得します。
 ```bash
 gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
@@ -102,12 +114,31 @@ gh api graphql -f query='
   }
 ' -f owner=<owner> -f repo=<repo> -F pr=<pr>
 ```
+`pageInfo.hasNextPage` が `true` の場合、`-f cursor=<endCursor>` で繰り返します。
 
-- `pageInfo.hasNextPage` が `true` の場合、`-f cursor=<endCursor>` で繰り返して全件取得する。
-- `isResolved = false` **かつ** ルートコメントの author が `thread-owl` のスレッドを収集する。他のレビュアー（Copilot・human reviewer 等）が投稿したスレッドはこのスキルのスコープ外としてスキップする。
-- 各スレッドの `id`（PRRT ノード ID — resolve mutation 用）とルートコメントの `databaseId`（返信用）を記録する。
-- thread-owl による未解決スレッドが 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
-- 1 件以上: **Phase 3** へ進む。
+---
+
+`isResolved = false` のすべてのスレッド（inline thread）を収集します。author（`thread-owl`、`thread-owl[bot]`、repository owner、GitHub App、Copilot、human reviewer等）にかかわらず、未解決の指摘はすべて対象とします。各スレッドの `id`（PRRT ノード ID — resolve 用）を記録します。また、`gh` CLI によるフォールバック取得時はルートコメントの `databaseId`（返信用）も記録します。
+
+### 2. レビュー本文（review body）の取得
+スレッド化されていないレビューの全体コメント（review body）を取得します。
+```bash
+gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
+```
+取得したレビュー本文の中から、具体的な修正や対応を求めている `actionable` な指摘を抽出します。
+**既処理チェック**: 抽出したコメントの `id` が Phase 0 で復元した `handled_comments` に含まれている場合は、処理済み（Resolved）としてスキップします。未対応のもののみ、コメントの `id`、`author`、`body` を記録します。
+
+### 3. PRコメント（issue comment）の取得
+スレッド形式になっていないPR全体のコメントを取得します。
+```bash
+gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
+```
+取得したコメントの中から、`actionable` な指摘を抽出します。
+**既処理チェック**: 抽出したコメントの `id` が Phase 0 で復元した `handled_comments` に含まれている場合は、処理済みとしてスキップします。未対応のもののみ、コメントの `id`、`author`、`body` を記録します。
+
+---
+
+未解決の指摘（未解決のインラインスレッド、および返信や対応が行われていない review body / PRコメントの指摘）が 0 件の場合は、`termination_status = READY_TO_MERGE` と判定して **Phase 6.5** へ進みます。1件以上の未解決指摘がある場合は **Phase 3** へ進みます。
 
 ## Phase 3: 分類・採否判断（自律）
 
@@ -152,16 +183,22 @@ gh api graphql -f query='
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
 6. ユーザーが明示的に求めない限り force push しない。
 
-## Phase U5: 返信＋resolve
+**返信＋resolve・処理済み記録**:
 
-**返信**: `{GH}:add_reply_to_pull_request_comment` を使う:
-- `owner`、`repo`、`pull_number`: Phase 0 で確定した値
-- `comment_id`: Phase U2 のルートコメント `databaseId`
-- 修正済み: コミットと具体的な修正内容を言及する。
-- reject: 理由を明確に述べる（下記 reject 返信ルール参照）。
+### 1. インラインレビュースレッドへの返信と解決
+**第一選択 (review-raven MCP)**: `{RAVEN}:reply_and_resolve_review_thread` を使用して、返信と解決（resolve）を順次実行します：
+- `threadId`: Phase U2 で取得したスレッド ID（PRRT_xxx）
+- `body`: 返信内容（修正内容の報告、または reject 時の理由）
+- `resolve`: `true`（解決する場合）、`false`（解決しない場合）
 
-**resolve**: GraphQL mutation で実行する:
+※返信のみを行う場合は `{RAVEN}:reply_to_review_thread` を、解決のみを行う場合は `{RAVEN}:resolve_review_thread` を個別に使用してもよい。
 
+**フォールバック (gh CLI)**: MCP ツールが使用できない場合は、以下を実行します。
+- **返信**: `{GH}:add_reply_to_pull_request_comment` を使用します。
+  - `owner`, `repo`, `pull_number`: Phase 0 で確定した値
+  - `comment_id`: Phase U2 で取得したルートコメントの `databaseId`
+  - `body`: 返信内容
+- **解決 (resolve)**: GraphQL mutation で実行します。
 ```bash
 gh api graphql -f query='
   mutation($threadId: ID!) {
@@ -172,7 +209,12 @@ gh api graphql -f query='
 ' -f threadId=<PRRT_node_id>
 ```
 
-Issue 作成・リンクが不可能な場合を除き常に resolve する。
+Issue 作成・リンクが不可能な場合を除き常に resolve します。
+
+### 2. レビュー本文・PRコメントへの返信と処理済み記録
+レビュー本文やPRコメントは「解決（resolve）」ボタンがないため、返信コメントの投稿とコミットの適用に加え、アノテーションへの記録をもって「処理済み」として永続化します。
+- **返信**: `{GH}:add_issue_comment`（または `gh pr comment`）を呼び出し、該当のコメントを引用しつつ、対応結果または reject の理由を返信します。
+- **記録**: 新たに解決した非スレッドのコメント ID を、今回サイクルで蓄積した `handled_comments` リストに追加します。これらは Phase 7 のサマリや再レビュー依頼コメントのアノテーションに記録されます。
 
 ### Reject 返信ルール
 
@@ -190,8 +232,10 @@ Issue 作成・リンクが不可能な場合を除き常に resolve する。
 
 ## Phase U6: サイクル評価・再レビュー判断
 
-**ステップ 1**: 未解決スレッドを再取得（Phase U2 クエリを再実行）。
-- 未解決 > 0: 想定外。報告して `needs user decision` で停止する。
+**ステップ 1**: 未解決指摘を再取得（Phase U2 の手順を再実行）。
+- インラインスレッドの未解決（`isResolved = false`）が 0 件であること。
+- 抽出したすべての review body / PR コメントの actionable 指摘に対して、対応する返信・処理が完了していること。
+- 未解決の指摘が 1 件以上残っている場合: 想定外。報告して `needs user decision` で停止する。
 
 **ステップ 2**: `need_re_review` を判断（未解決 = 0 の場合のみ）:
 
@@ -227,10 +271,10 @@ Phase 7 用に記録する: `termination_status`、`final_cycle_fix_types`、`un
 
 修正対応が完了しました。再レビューをお願いします。
 
-<!-- review-raven: cycles_done=N -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
-`N` には現在の `cycles_done` の値を記入する。このアノテーションは次の thread-owl queue 通知後にスキルが Phase 0 から再開する際の `cycles_done` 復元に使用される。
+`N` には現在の `cycles_done` の値、`handled_comments` にはこれまでに処理を完了した（本サイクルで処理したものを含む）すべての非スレッドコメント ID のリストをカンマ区切りで記入します。これにより、次回のサイクル開始時（Phase 0）に正しく処理済み状態が復元され、重複対応を防ぎます。
 
 **reviewed-side cycle はここで完了する。Phase U2 には戻らない。**
 次の reviewer-side cycle は thread-owl の `issue_comment.created` webhook → queue → mcp-resource-subscriber 通知によって起動される。
@@ -274,12 +318,14 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ### 検証
 - CI: ...
-- 未解決スレッド: 0
+- 未解決指摘数: 0
 - サイクルステータス: <termination_status>
   - `ESCALATE — Unverified Fix` の場合: 理由・未検証コミット SHA・「マージ前に人間レビュー推奨」を明記
 - 最終サイクル修正タイプ: blocking × N, non-blocking × N, suggestion × N, trivial × N
 - cycles_done: N
 - 再レビュー: @thread-owl コメント投稿済み | 不要 | ESCALATE（最大サイクル超過）
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
 **`先送り・スコープ外項目` ルール**: `out-of-scope` / `deferred` / `follow-up` を理由とする全 reject をフォローアップ Issue 番号付きでリストしなければならない。「なし」は該当 reject が 0 件かつ Phase U5 ステップ 4 で未解決スレッドがない場合のみ許容。
@@ -290,7 +336,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 マージ条件（ユーザー指示時に満たすこと）:
 - CI 全ジョブ SUCCESS
-- 未解決レビュースレッド = 0 件
+- 未解決の review 指摘 = 0 件
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
@@ -320,12 +366,17 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ## ツール対応表
 
-| ツール | 用途 |
-|-------|------|
-| `gh` CLI | GraphQL スレッド取得・resolve mutation・CI 確認 |
-| `{GH}:add_reply_to_pull_request_comment` | レビュースレッドに返信 |
-| `{GH}:add_issue_comment` | PR サマリ・再レビュー依頼コメント投稿 |
-| `{GH}:create_issue` | フォローアップトラッキング Issue を作成 |
+| ツール/コマンド | 役割 | 優先順位 |
+|----------------|------|----------|
+| `{RAVEN}:get_review_threads` | 全レビュースレッドの取得 | **第一選択** |
+| `gh api graphql` (query) | 全レビュースレッドの取得 | **フォールバック** |
+| `{RAVEN}:reply_and_resolve_review_thread` | スレッドへの返信と解決 | **第一選択** |
+| `{GH}:add_reply_to_pull_request_comment` + `gh api graphql` (mutation) | スレッドへの返信と解決 | **フォールバック** |
+| `{RAVEN}:reply_to_review_thread` | レビュースレッドに返信 | **第一選択** |
+| `{RAVEN}:resolve_review_thread` | レビュースレッドを解決済みにする | **第一選択** |
+| `{GH}:add_issue_comment` | PR サマリ・再レビュー依頼コメント投稿 | 共通 |
+| `{GH}:create_issue` | フォローアップトラッキング Issue を作成 | 共通 |
+| `gh pr checks` | CI確認 | 共通 |
 
 ---
 

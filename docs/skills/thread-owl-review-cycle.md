@@ -17,8 +17,11 @@ Re-review requests are posted as `@thread-owl re-review requested` PR comments �
 
 > **About this file**
 > `docs/skills/thread-owl-review-cycle.md` is a shared template for this repository.
-> Copy it to your personal AI agent configuration (e.g. `~/.claude/skills/`) before use.
+> Copy it to your personal AI agent configuration (e.g. `~/.gemini/antigravity-cli/skills/` or `~/.claude/skills/`) before use.
 > Adapt MCP server keys to match your environment.
+> 
+> **Updating Installed Skill**
+> If you have already installed this skill in your personal AI agent configuration, overwrite the installed `SKILL.md` with the contents of this latest template file to apply the update.
 
 ---
 
@@ -29,14 +32,16 @@ Re-review requests are posted as `@thread-owl re-review requested` PR comments �
 | Server | Role | Reference |
 |--------|------|-----------|
 | `github` | Post PR comments, create issues | [README.md](../../README.md) |
+| `review-raven` | Fetch, reply, and resolve PR review threads | [README.md](../../README.md) |
 
-> `review-raven` MCP tools are NOT used in this skill. Thread reading is done via `gh` CLI (GraphQL).
+> This skill uses `review-raven` MCP tools as the primary method for fetching, replying to, and resolving threads. It falls back to the `gh` CLI (GraphQL/REST API) if the MCP tools are unavailable.
 
 ### Placeholder Substitution
 
 | Placeholder | Role | Example |
 |-------------|------|---------|
 | `{GH}` | `github` server tools | `mcp__github__*` |
+| `{RAVEN}` | `review-raven` server tools | `mcp__review-raven__*` |
 
 ---
 
@@ -65,16 +70,23 @@ Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → Phase U5: R
 
 1. Determine `owner`, `repo`, `pr`.
 2. Set `max_cycles = 3` (default; adjust if needed).
-3. Recover `cycles_done` from PR comment history:
-   - Search PR issue comments for `<!-- review-raven: cycles_done=N -->` (most recent occurrence).
-   - If found: `cycles_done = N + 1`.
-   - If not found: `cycles_done = 0`.
+3. Recover `cycles_done` and `handled_comments` (processed non-thread comment IDs) from PR comment history:
+   - Search PR issue comments for `<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->` (or `cycles_done=N` alone) in the most recent occurrence.
+   - `cycles_done`: If found, set to `N + 1`. If not found, set to `0`.
+   - `handled_comments`: Build a set of processed comment IDs from the `handled_comments` list in the annotation. If not found, set to empty.
 4. Proceed to Phase U2.
 
-## Phase U2: Collect Review Threads
+## Phase U2: Collect Review Comments
 
-Retrieve all review threads via paginated GraphQL:
+Collect all review feedback using the following three methods:
 
+### 1. Collect Inline Review Threads
+**Primary (review-raven MCP)**: Call `{RAVEN}:get_review_threads` to fetch all review threads:
+- `owner`: `<owner>`
+- `repo`: `<repo>`
+- `pr`: `<pr>`
+
+**Fallback (gh CLI)**: If the MCP server is unavailable, fetch review threads using GraphQL via `gh` CLI:
 ```bash
 gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
@@ -102,12 +114,31 @@ gh api graphql -f query='
   }
 ' -f owner=<owner> -f repo=<repo> -F pr=<pr>
 ```
+If `pageInfo.hasNextPage` is `true`, repeat with `-f cursor=<endCursor>`.
 
-- If `pageInfo.hasNextPage` is `true`, repeat with `-f cursor=<endCursor>` until exhausted.
-- Collect threads where `isResolved = false` **and** the root comment author is `thread-owl`. Skip threads posted by other reviewers (Copilot, human reviewers, etc.) — they are out of scope for this skill.
-- Record each thread's `id` (PRRT node ID — for resolve mutation) and root comment `databaseId` (for replies).
-- If 0 unresolved thread-owl threads: proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
-- Otherwise: proceed to **Phase 3**.
+---
+
+Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted. Record each thread's `id` (PRRT node ID — for resolve). Also record the root comment's `databaseId` (for replies) when using the `gh` CLI fallback path.
+
+### 2. Collect Review Body Comments
+Retrieve review bodies (the overall comments on reviews) that are not part of an inline thread:
+```bash
+gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
+```
+Extract `actionable` feedback requiring changes from the review bodies.
+**Already-processed Check**: If the extracted comment's `id` is present in the `handled_comments` set recovered in Phase 0, skip it as already processed (Resolved). Otherwise, record the comment `id`, `author`, and `body`.
+
+### 3. Collect PR Comments (Issue Comments)
+Retrieve general PR comments that are not formatted as inline threads:
+```bash
+gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
+```
+Extract `actionable` feedback from these comments.
+**Already-processed Check**: If the extracted comment's `id` is present in the `handled_comments` set recovered in Phase 0, skip it as already processed. Otherwise, record the comment `id`, `author`, and `body`.
+
+---
+
+If there are 0 unresolved items (both inline threads and non-thread comments like review body / PR comments), proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`. Otherwise, proceed to **Phase 3**.
 
 ## Phase 3: Classify & Accept/Reject (Autonomous)
 
@@ -154,16 +185,22 @@ Determine `fix_type`:
 5. Make **one commit** covering all fixes (Conventional Commits format).
 6. Push without force unless the user explicitly asks otherwise.
 
-## Phase U5: Reply & Resolve
+**Reply, Resolve, & Record Progress**:
 
-**Reply** using `{GH}:add_reply_to_pull_request_comment`:
-- `owner`, `repo`, `pull_number`: from Phase 0
-- `comment_id`: root comment's `databaseId` from Phase U2
-- Fixed: mention the commit and concrete fix.
-- Rejected: state the reason clearly (see reject sub-rules below).
+### 1. Reply and Resolve Inline Review Threads
+**Primary (review-raven MCP)**: Reply to and resolve review threads sequentially using `{RAVEN}:reply_and_resolve_review_thread`:
+- `threadId`: the thread ID (PRRT_xxx) from Phase U2
+- `body`: reply content (fix description or rejection reason)
+- `resolve`: `true` (to resolve), `false` (to keep unresolved)
 
-**Resolve** using GraphQL mutation:
+*Alternatively, you can call `{RAVEN}:reply_to_review_thread` for replies only, or `{RAVEN}:resolve_review_thread` for resolution only.*
 
+**Fallback (gh CLI)**: If MCP tools are unavailable, perform the following:
+- **Reply**: Call `{GH}:add_reply_to_pull_request_comment`:
+  - `owner`, `repo`, `pull_number`: from Phase 0
+  - `comment_id`: root comment's `databaseId` from Phase U2
+  - `body`: reply content
+- **Resolve**: Run GraphQL mutation:
 ```bash
 gh api graphql -f query='
   mutation($threadId: ID!) {
@@ -175,6 +212,11 @@ gh api graphql -f query='
 ```
 
 Always resolve unless a tracking issue cannot be created (see step 4 below).
+
+### 2. Reply and Record Progress for Review Bodies and PR Comments
+Since review bodies and issue comments do not have a "resolve" button, they are marked as resolved by replying to them, applying commits, and persisting them in comments.
+- **Reply**: Call `{GH}:add_issue_comment` (or `gh pr comment`) to post a response referencing the comment, detailing the fix or rejection reason.
+- **Record**: Add the newly addressed comment ID to the accumulated `handled_comments` list for this cycle. These will be persisted in Phase 7's summary and the re-review request comment annotations.
 
 ### Reject reply rules
 
@@ -192,8 +234,10 @@ Do NOT resolve the thread. Record as `untracked — needs follow-up issue` in Ph
 
 ## Phase U6: Cycle Evaluation & Re-review Decision
 
-**Step 1**: Re-fetch unresolved threads (re-run Phase U2 query).
-- If unresolved > 0: unexpected. Report and stop with `needs user decision`.
+**Step 1**: Re-fetch unresolved feedback (re-run Phase U2 checks).
+- Verify all inline threads are resolved (`isResolved = true`).
+- Verify all extracted review bodies and PR comments have been replied to and addressed.
+- If any unresolved feedback remains: unexpected. Report and stop with `needs user decision`.
 
 **Step 2**: Determine `need_re_review` (only when unresolved = 0):
 
@@ -229,10 +273,10 @@ Post via `{GH}:add_issue_comment`:
 
 The requested changes have been addressed. Please review again.
 
-<!-- review-raven: cycles_done=N -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
-Replace `N` with the current value of `cycles_done`. This annotation is used to recover `cycles_done` when the skill re-enters at Phase 0 after the next thread-owl queue notification.
+Replace `N` with the current value of `cycles_done`, and `handled_comments` with a comma-separated list of all processed non-thread comment IDs (including those addressed in this cycle). This annotation is used to recover states at Phase 0 of the next cycle.
 
 **The reviewed-side cycle ends here. Do NOT loop back to Phase U2.**
 The next reviewer-side cycle is triggered by thread-owl's `issue_comment.created` webhook → queue → mcp-resource-subscriber notification.
@@ -275,12 +319,14 @@ Post via `{GH}:add_issue_comment`:
 
 ### Verification
 - CI: ...
-- Unresolved threads: 0
+- Unresolved comments: 0
 - Cycle status: <termination_status>
   - On `ESCALATE — Unverified Fix`: reason, unverified commit SHA(s), "Recommendation: human review before merge"
 - Final cycle fix types: blocking × N, non-blocking × N, suggestion × N, trivial × N
 - cycles_done: N
 - Re-review: requested via @thread-owl comment | not needed | ESCALATE (max cycles)
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
 **`Deferred / Scope-out Items` rules:** MUST list every `out-of-scope` / `deferred` / `follow-up` reject with follow-up issue number. `- None` only when zero such rejects exist AND no thread was left unresolved.
@@ -291,7 +337,7 @@ Post via `{GH}:add_issue_comment`:
 
 Merge conditions:
 - CI all SUCCESS
-- Unresolved review threads = 0
+- Unresolved review comments = 0
 - All threads replied
 - No unresolved `blocking` items
 - `termination_status` is `READY_TO_MERGE` or `ESCALATE — Clean`
@@ -321,12 +367,17 @@ If `termination_status = WAITING_FOR_REVIEW(thread-owl)` (re-review comment post
 
 ## Tool Reference
 
-| Tool | Purpose |
-|------|---------|
-| `gh` CLI | GraphQL thread collection, resolve mutation, CI checks |
-| `{GH}:add_reply_to_pull_request_comment` | Reply to review thread |
-| `{GH}:add_issue_comment` | Post PR summary / re-review request comment |
-| `{GH}:create_issue` | Create follow-up tracking issue |
+| Tool/Command | Purpose | Priority |
+|--------------|---------|----------|
+| `{RAVEN}:get_review_threads` | Fetch all review threads in the PR | **Primary** |
+| `gh api graphql` (query) | Fetch all review threads in the PR | **Fallback** |
+| `{RAVEN}:reply_and_resolve_review_thread` | Reply and resolve a thread concurrently | **Primary** |
+| `{GH}:add_reply_to_pull_request_comment` + `gh api graphql` (mutation) | Reply and resolve a thread concurrently | **Fallback** |
+| `{RAVEN}:reply_to_review_thread` | Reply to a review thread | **Primary** |
+| `{RAVEN}:resolve_review_thread` | Mark a review thread as resolved | **Primary** |
+| `{GH}:add_issue_comment` | Post PR summary / re-review request comment | Common |
+| `{GH}:create_issue` | Create follow-up tracking issue | Common |
+| `gh pr checks` | Verify CI status | Common |
 
 ---
 
