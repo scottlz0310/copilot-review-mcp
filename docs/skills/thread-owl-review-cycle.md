@@ -34,7 +34,7 @@ Re-review requests are posted as `@thread-owl re-review requested` PR comments �
 | `github` | Post PR comments, create issues | [README.md](../../README.md) |
 | `review-raven` | Fetch, reply, and resolve PR review threads | [README.md](../../README.md) |
 
-> This skill uses `review-raven` MCP tools for fetching, replying to, and resolving threads.
+> This skill uses `review-raven` MCP tools as the primary method for fetching, replying to, and resolving threads. It falls back to the `gh` CLI (GraphQL/REST API) if the MCP tools are unavailable.
 
 ### Placeholder Substitution
 
@@ -81,12 +81,44 @@ Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → Phase U5: R
 Collect all review feedback using the following three methods:
 
 ### 1. Collect Inline Review Threads
-Call `{RAVEN}:get_review_threads` to fetch all review threads:
+**Primary (review-raven MCP)**: Call `{RAVEN}:get_review_threads` to fetch all review threads:
 - `owner`: `<owner>`
 - `repo`: `<repo>`
 - `pr`: `<pr>`
 
-Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted. Record each thread's `id` (PRRT node ID — for resolve).
+**Fallback (gh CLI)**: If the MCP server is unavailable, fetch review threads using GraphQL via `gh` CLI:
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            isResolved
+            comments(first: 10) {
+              nodes {
+                databaseId
+                body
+                path
+                line
+                author { login }
+                createdAt
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+' -f owner=<owner> -f repo=<repo> -F pr=<pr>
+```
+If `pageInfo.hasNextPage` is `true`, repeat with `-f cursor=<endCursor>`.
+
+---
+
+Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted. Record each thread's `id` (PRRT node ID — for resolve). Also record the root comment's `databaseId` (for replies) when using the `gh` CLI fallback path.
 
 ### 2. Collect Review Body Comments
 Retrieve review bodies (the overall comments on reviews) that are not part of an inline thread:
@@ -154,12 +186,29 @@ Determine `fix_type`:
 **Reply, Resolve, & Record Progress**:
 
 ### 1. Reply and Resolve Inline Review Threads
-Reply to and resolve review threads sequentially using `{RAVEN}:reply_and_resolve_review_thread`:
+**Primary (review-raven MCP)**: Reply to and resolve review threads sequentially using `{RAVEN}:reply_and_resolve_review_thread`:
 - `threadId`: the thread ID (PRRT_xxx) from Phase U2
 - `body`: reply content (fix description or rejection reason)
 - `resolve`: `true` (to resolve), `false` (to keep unresolved)
 
 *Alternatively, you can call `{RAVEN}:reply_to_review_thread` for replies only, or `{RAVEN}:resolve_review_thread` for resolution only.*
+
+**Fallback (gh CLI)**: If MCP tools are unavailable, perform the following:
+- **Reply**: Call `{GH}:add_reply_to_pull_request_comment`:
+  - `owner`, `repo`, `pull_number`: from Phase 0
+  - `comment_id`: root comment's `databaseId` from Phase U2
+  - `body`: reply content
+- **Resolve**: Run GraphQL mutation:
+```bash
+gh api graphql -f query='
+  mutation($threadId: ID!) {
+    resolveReviewThread(input: {threadId: $threadId}) {
+      thread { id isResolved }
+    }
+  }
+' -f threadId=<PRRT_node_id>
+```
+
 Always resolve unless a tracking issue cannot be created (see step 4 below).
 
 ### 2. Reply and Record Progress for Review Bodies and PR Comments
@@ -314,15 +363,17 @@ If `termination_status = WAITING_FOR_REVIEW(thread-owl)` (re-review comment post
 
 ## Tool Reference
 
-| Tool | Purpose |
-|------|---------|
-| `{RAVEN}:get_review_threads` | Fetch all review threads in the PR |
-| `{RAVEN}:reply_and_resolve_review_thread` | Reply and resolve a thread concurrently |
-| `{RAVEN}:reply_to_review_thread` | Reply to a review thread |
-| `{RAVEN}:resolve_review_thread` | Mark a review thread as resolved |
-| `gh` CLI | CI checks (GraphQL thread collection/resolve are delegated to `{RAVEN}`) |
-| `{GH}:add_issue_comment` | Post PR summary / re-review request comment |
-| `{GH}:create_issue` | Create follow-up tracking issue |
+| Tool/Command | Purpose | Priority |
+|--------------|---------|----------|
+| `{RAVEN}:get_review_threads` | Fetch all review threads in the PR | **Primary** |
+| `gh api graphql` (query) | Fetch all review threads in the PR | **Fallback** |
+| `{RAVEN}:reply_and_resolve_review_thread` | Reply and resolve a thread concurrently | **Primary** |
+| `{GH}:add_reply_to_pull_request_comment` + `gh api graphql` (mutation) | Reply and resolve a thread concurrently | **Fallback** |
+| `{RAVEN}:reply_to_review_thread` | Reply to a review thread | **Primary** |
+| `{RAVEN}:resolve_review_thread` | Mark a review thread as resolved | **Primary** |
+| `{GH}:add_issue_comment` | Post PR summary / re-review request comment | Common |
+| `{GH}:create_issue` | Create follow-up tracking issue | Common |
+| `gh pr checks` | Verify CI status | Common |
 
 ---
 
