@@ -70,10 +70,10 @@ Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → Phase U5: R
 
 1. Determine `owner`, `repo`, `pr`.
 2. Set `max_cycles = 3` (default; adjust if needed).
-3. Recover `cycles_done` from PR comment history:
-   - Search PR issue comments for `<!-- review-raven: cycles_done=N -->` (most recent occurrence).
-   - If found: `cycles_done = N + 1`.
-   - If not found: `cycles_done = 0`.
+3. Recover `cycles_done` and `handled_comments` (processed non-thread comment IDs) from PR comment history:
+   - Search PR issue comments for `<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->` (or `cycles_done=N` alone) in the most recent occurrence.
+   - `cycles_done`: If found, set to `N + 1`. If not found, set to `0`.
+   - `handled_comments`: Build a set of processed comment IDs from the `handled_comments` list in the annotation. If not found, set to empty.
 4. Proceed to Phase U2.
 
 ## Phase U2: Collect Review Comments
@@ -125,14 +125,16 @@ Retrieve review bodies (the overall comments on reviews) that are not part of an
 ```bash
 gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
 ```
-Extract `actionable` feedback requiring changes from the review bodies. Record the comment `id`, `author`, and `body`.
+Extract `actionable` feedback requiring changes from the review bodies.
+**Already-processed Check**: If the extracted comment's `id` is present in the `handled_comments` set recovered in Phase 0, skip it as already processed (Resolved). Otherwise, record the comment `id`, `author`, and `body`.
 
 ### 3. Collect PR Comments (Issue Comments)
 Retrieve general PR comments that are not formatted as inline threads:
 ```bash
 gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
 ```
-Extract `actionable` feedback from these comments. Record the comment `id`, `author`, and `body`.
+Extract `actionable` feedback from these comments.
+**Already-processed Check**: If the extracted comment's `id` is present in the `handled_comments` set recovered in Phase 0, skip it as already processed. Otherwise, record the comment `id`, `author`, and `body`.
 
 ---
 
@@ -212,9 +214,9 @@ gh api graphql -f query='
 Always resolve unless a tracking issue cannot be created (see step 4 below).
 
 ### 2. Reply and Record Progress for Review Bodies and PR Comments
-Since review bodies and issue comments do not have a "resolve" button, they are marked as resolved by replying to them and applying commits.
+Since review bodies and issue comments do not have a "resolve" button, they are marked as resolved by replying to them, applying commits, and persisting them in comments.
 - **Reply**: Call `{GH}:add_issue_comment` (or `gh pr comment`) to post a response referencing the comment, detailing the fix or rejection reason.
-- **Record**: Tie the reply comment ID or commit SHA to the original feedback to track it as completed.
+- **Record**: Add the newly addressed comment ID to the accumulated `handled_comments` list for this cycle. These will be persisted in Phase 7's summary and the re-review request comment annotations.
 
 ### Reject reply rules
 
@@ -271,10 +273,10 @@ Post via `{GH}:add_issue_comment`:
 
 The requested changes have been addressed. Please review again.
 
-<!-- review-raven: cycles_done=N -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
-Replace `N` with the current value of `cycles_done`. This annotation is used to recover `cycles_done` when the skill re-enters at Phase 0 after the next thread-owl queue notification.
+Replace `N` with the current value of `cycles_done`, and `handled_comments` with a comma-separated list of all processed non-thread comment IDs (including those addressed in this cycle). This annotation is used to recover states at Phase 0 of the next cycle.
 
 **The reviewed-side cycle ends here. Do NOT loop back to Phase U2.**
 The next reviewer-side cycle is triggered by thread-owl's `issue_comment.created` webhook → queue → mcp-resource-subscriber notification.
@@ -323,6 +325,8 @@ Post via `{GH}:add_issue_comment`:
 - Final cycle fix types: blocking × N, non-blocking × N, suggestion × N, trivial × N
 - cycles_done: N
 - Re-review: requested via @thread-owl comment | not needed | ESCALATE (max cycles)
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
 **`Deferred / Scope-out Items` rules:** MUST list every `out-of-scope` / `deferred` / `follow-up` reject with follow-up issue number. `- None` only when zero such rejects exist AND no thread was left unresolved.

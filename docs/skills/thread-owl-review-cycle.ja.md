@@ -70,10 +70,10 @@ Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U
 
 1. `owner`、`repo`、`pr` を確定する。
 2. `max_cycles = 3` を設定する（必要に応じて調整）。
-3. `cycles_done` を PR コメント履歴から復元する:
-   - PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N -->` を見つける。
-   - 見つかった場合: `cycles_done = N + 1`。
-   - 見つからない場合: `cycles_done = 0`。
+3. `cycles_done` と `handled_comments`（処理済みの非スレッドコメントID）を PR コメント履歴から復元する:
+   - PR の issue comment を検索し、最新の `<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->`（または `cycles_done=N` 単体）を見つける。
+   - `cycles_done`: 見つかった場合 `N + 1`、見つからない場合 `0`。
+   - `handled_comments`: アノテーション内の `handled_comments` にリストされているID群を記録してセット（既処理リスト）を作成する。見つからない場合は空。
 4. Phase U2 へ進む。
 
 ## Phase U2: レビュー指摘の収集
@@ -125,14 +125,16 @@ gh api graphql -f query='
 ```bash
 gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
 ```
-取得したレビュー本文の中から、具体的な修正や対応を求めている `actionable` な指摘を抽出します。コメントの `id`、`author`、`body` を記録します。
+取得したレビュー本文の中から、具体的な修正や対応を求めている `actionable` な指摘を抽出します。
+**既処理チェック**: 抽出したコメントの `id` が Phase 0 で復元した `handled_comments` に含まれている場合は、処理済み（Resolved）としてスキップします。未対応のもののみ、コメントの `id`、`author`、`body` を記録します。
 
 ### 3. PRコメント（issue comment）の取得
 スレッド形式になっていないPR全体のコメントを取得します。
 ```bash
 gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
 ```
-取得したコメントの中から、`actionable` な指摘を抽出します。コメントの `id`、`author`、`body` を記録します。
+取得したコメントの中から、`actionable` な指摘を抽出します。
+**既処理チェック**: 抽出したコメントの `id` が Phase 0 で復元した `handled_comments` に含まれている場合は、処理済みとしてスキップします。未対応のもののみ、コメントの `id`、`author`、`body` を記録します。
 
 ---
 
@@ -210,9 +212,9 @@ gh api graphql -f query='
 Issue 作成・リンクが不可能な場合を除き常に resolve します。
 
 ### 2. レビュー本文・PRコメントへの返信と処理済み記録
-レビュー本文やPRコメントは「解決（resolve）」ボタンがないため、返信コメントの投稿とコミットの適用をもって「処理済み」として記録します。
+レビュー本文やPRコメントは「解決（resolve）」ボタンがないため、返信コメントの投稿とコミットの適用に加え、アノテーションへの記録をもって「処理済み」として永続化します。
 - **返信**: `{GH}:add_issue_comment`（または `gh pr comment`）を呼び出し、該当のコメントを引用しつつ、対応結果または reject の理由を返信します。
-- **記録**: 返信したコメント ID または対応するコミットを紐づけ、処理済み状態として管理します。
+- **記録**: 新たに解決した非スレッドのコメント ID を、今回サイクルで蓄積した `handled_comments` リストに追加します。これらは Phase 7 のサマリや再レビュー依頼コメントのアノテーションに記録されます。
 
 ### Reject 返信ルール
 
@@ -269,10 +271,10 @@ Phase 7 用に記録する: `termination_status`、`final_cycle_fix_types`、`un
 
 修正対応が完了しました。再レビューをお願いします。
 
-<!-- review-raven: cycles_done=N -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
-`N` には現在の `cycles_done` の値を記入する。このアノテーションは次の thread-owl queue 通知後にスキルが Phase 0 から再開する際の `cycles_done` 復元に使用される。
+`N` には現在の `cycles_done` の値、`handled_comments` にはこれまでに処理を完了した（本サイクルで処理したものを含む）すべての非スレッドコメント ID のリストをカンマ区切りで記入します。これにより、次回のサイクル開始時（Phase 0）に正しく処理済み状態が復元され、重複対応を防ぎます。
 
 **reviewed-side cycle はここで完了する。Phase U2 には戻らない。**
 次の reviewer-side cycle は thread-owl の `issue_comment.created` webhook → queue → mcp-resource-subscriber 通知によって起動される。
@@ -322,6 +324,8 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 - 最終サイクル修正タイプ: blocking × N, non-blocking × N, suggestion × N, trivial × N
 - cycles_done: N
 - 再レビュー: @thread-owl コメント投稿済み | 不要 | ESCALATE（最大サイクル超過）
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
 ```
 
 **`先送り・スコープ外項目` ルール**: `out-of-scope` / `deferred` / `follow-up` を理由とする全 reject をフォローアップ Issue 番号付きでリストしなければならない。「なし」は該当 reject が 0 件かつ Phase U5 ステップ 4 で未解決スレッドがない場合のみ許容。
