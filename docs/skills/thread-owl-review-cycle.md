@@ -17,8 +17,11 @@ Re-review requests are posted as `@thread-owl re-review requested` PR comments �
 
 > **About this file**
 > `docs/skills/thread-owl-review-cycle.md` is a shared template for this repository.
-> Copy it to your personal AI agent configuration (e.g. `~/.claude/skills/`) before use.
+> Copy it to your personal AI agent configuration (e.g. `~/.gemini/antigravity-cli/skills/` or `~/.claude/skills/`) before use.
 > Adapt MCP server keys to match your environment.
+> 
+> **Updating Installed Skill**
+> If you have already installed this skill in your personal AI agent configuration, overwrite the installed `SKILL.md` with the contents of this latest template file to apply the update.
 
 ---
 
@@ -104,9 +107,10 @@ gh api graphql -f query='
 ```
 
 - If `pageInfo.hasNextPage` is `true`, repeat with `-f cursor=<endCursor>` until exhausted.
-- Collect threads where `isResolved = false` **and** the root comment author is `thread-owl`. Skip threads posted by other reviewers (Copilot, human reviewers, etc.) — they are out of scope for this skill.
-- Record each thread's `id` (PRRT node ID — for resolve mutation) and root comment `databaseId` (for replies).
-- If 0 unresolved thread-owl threads: proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
+- Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted.
+- Also collect actionable comments in the review body or PR comments (issue comments) that are not formatted as inline threads.
+- Record each thread's `id` (PRRT node ID — for resolve mutation) and root comment `databaseId` (for replies). For comments not part of an inline thread (such as review body), record their comment ID for replies or issue creation as necessary.
+- If 0 unresolved review comments (both inline threads and review body actionable comments): proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
 - Otherwise: proceed to **Phase 3**.
 
 ## Phase 3: Classify & Accept/Reject (Autonomous)
@@ -275,7 +279,7 @@ Post via `{GH}:add_issue_comment`:
 
 ### Verification
 - CI: ...
-- Unresolved threads: 0
+- Unresolved comments: 0
 - Cycle status: <termination_status>
   - On `ESCALATE — Unverified Fix`: reason, unverified commit SHA(s), "Recommendation: human review before merge"
 - Final cycle fix types: blocking × N, non-blocking × N, suggestion × N, trivial × N
@@ -291,7 +295,7 @@ Post via `{GH}:add_issue_comment`:
 
 Merge conditions:
 - CI all SUCCESS
-- Unresolved review threads = 0
+- Unresolved review comments = 0
 - All threads replied
 - No unresolved `blocking` items
 - `termination_status` is `READY_TO_MERGE` or `ESCALATE — Clean`

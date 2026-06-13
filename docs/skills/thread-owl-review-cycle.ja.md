@@ -17,8 +17,11 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 
 > **このファイルについて**
 > `docs/skills/thread-owl-review-cycle.ja.md` はリポジトリ共有用テンプレートです。
-> 個人の AI エージェント設定（`~/.claude/skills/` 等）にコピーしてご利用ください。
+> 個人の AI エージェント設定（`~/.gemini/antigravity-cli/skills/` や `~/.claude/skills/` 等）にコピーしてご利用ください。
 > MCP サーバーキーはお使いの環境に合わせて読み替えてください。
+> 
+> **インストール済みSkillの更新手順**
+> すでに個人の AI エージェント設定に本スキルをインストールしている場合、この最新のテンプレートファイルの内容でインストール先の `SKILL.md` を上書きして更新を反映してください。
 
 ---
 
@@ -104,9 +107,10 @@ gh api graphql -f query='
 ```
 
 - `pageInfo.hasNextPage` が `true` の場合、`-f cursor=<endCursor>` で繰り返して全件取得する。
-- `isResolved = false` **かつ** ルートコメントの author が `thread-owl` のスレッドを収集する。他のレビュアー（Copilot・human reviewer 等）が投稿したスレッドはこのスキルのスコープ外としてスキップする。
-- 各スレッドの `id`（PRRT ノード ID — resolve mutation 用）とルートコメントの `databaseId`（返信用）を記録する。
-- thread-owl による未解決スレッドが 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
+- `isResolved = false` のすべてのスレッド（inline thread）を収集する。author（`thread-owl`、`thread-owl[bot]`、repository owner、GitHub App、Copilot、human reviewer等）にかかわらず、未解決の指摘はすべて対象とする。
+- また、スレッド（inline thread）形式になっていない、review body や PR コメント（issue comment）に含まれる actionable な（対応が必要な）指摘も収集対象に含める。
+- 各スレッドの `id`（PRRT ノード ID — resolve mutation 用）とルートコメントの `databaseId`（返信用）を記録する。review body などのスレッドになっていないコメントは、必要に応じて返信先（コメントID）や Issue 化の対象として記録する。
+- 未解決の review 指摘（スレッドおよび review body 等の actionable 指摘）が 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
 - 1 件以上: **Phase 3** へ進む。
 
 ## Phase 3: 分類・採否判断（自律）
@@ -274,7 +278,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ### 検証
 - CI: ...
-- 未解決スレッド: 0
+- 未解決指摘数: 0
 - サイクルステータス: <termination_status>
   - `ESCALATE — Unverified Fix` の場合: 理由・未検証コミット SHA・「マージ前に人間レビュー推奨」を明記
 - 最終サイクル修正タイプ: blocking × N, non-blocking × N, suggestion × N, trivial × N
@@ -290,7 +294,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 マージ条件（ユーザー指示時に満たすこと）:
 - CI 全ジョブ SUCCESS
-- 未解決レビュースレッド = 0 件
+- 未解決の review 指摘 = 0 件
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
