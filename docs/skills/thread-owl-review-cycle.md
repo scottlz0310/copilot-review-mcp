@@ -76,16 +76,35 @@ Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → Phase U5: R
    - If not found: `cycles_done = 0`.
 4. Proceed to Phase U2.
 
+## Phase U2: Collect Review Comments
+
+Collect all review feedback using the following three methods:
+
+### 1. Collect Inline Review Threads
 Call `{RAVEN}:get_review_threads` to fetch all review threads:
 - `owner`: `<owner>`
 - `repo`: `<repo>`
 - `pr`: `<pr>`
 
-- Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted.
-- Also collect actionable comments in the review body or PR comments (issue comments) that are not formatted as inline threads.
-- Record each thread's `id` (PRRT node ID — for resolve). For comments not part of an inline thread (such as review body), record their comment ID for replies or issue creation as necessary.
-- If 0 unresolved review comments (both inline threads and review body actionable comments): proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`.
-- Otherwise: proceed to **Phase 3**.
+Collect all threads where `isResolved = false`. Regardless of the author (e.g., `thread-owl`, `thread-owl[bot]`, repository owner, GitHub App, Copilot, or human reviewer), all unresolved actionable comments are targeted. Record each thread's `id` (PRRT node ID — for resolve).
+
+### 2. Collect Review Body Comments
+Retrieve review bodies (the overall comments on reviews) that are not part of an inline thread:
+```bash
+gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
+```
+Extract `actionable` feedback requiring changes from the review bodies. Record the comment `id`, `author`, and `body`.
+
+### 3. Collect PR Comments (Issue Comments)
+Retrieve general PR comments that are not formatted as inline threads:
+```bash
+gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
+```
+Extract `actionable` feedback from these comments. Record the comment `id`, `author`, and `body`.
+
+---
+
+If there are 0 unresolved items (both inline threads and non-thread comments like review body / PR comments), proceed to **Phase 6.5** with `termination_status = READY_TO_MERGE`. Otherwise, proceed to **Phase 3**.
 
 ## Phase 3: Classify & Accept/Reject (Autonomous)
 
@@ -132,15 +151,21 @@ Determine `fix_type`:
 5. Make **one commit** covering all fixes (Conventional Commits format).
 6. Push without force unless the user explicitly asks otherwise.
 
-**Reply & Resolve**:
+**Reply, Resolve, & Record Progress**:
+
+### 1. Reply and Resolve Inline Review Threads
 Reply to and resolve review threads sequentially using `{RAVEN}:reply_and_resolve_review_thread`:
 - `threadId`: the thread ID (PRRT_xxx) from Phase U2
 - `body`: reply content (fix description or rejection reason)
 - `resolve`: `true` (to resolve), `false` (to keep unresolved)
 
 *Alternatively, you can call `{RAVEN}:reply_to_review_thread` for replies only, or `{RAVEN}:resolve_review_thread` for resolution only.*
-
 Always resolve unless a tracking issue cannot be created (see step 4 below).
+
+### 2. Reply and Record Progress for Review Bodies and PR Comments
+Since review bodies and issue comments do not have a "resolve" button, they are marked as resolved by replying to them and applying commits.
+- **Reply**: Call `{GH}:add_issue_comment` (or `gh pr comment`) to post a response referencing the comment, detailing the fix or rejection reason.
+- **Record**: Tie the reply comment ID or commit SHA to the original feedback to track it as completed.
 
 ### Reject reply rules
 
@@ -158,8 +183,10 @@ Do NOT resolve the thread. Record as `untracked — needs follow-up issue` in Ph
 
 ## Phase U6: Cycle Evaluation & Re-review Decision
 
-**Step 1**: Re-fetch unresolved threads (re-run Phase U2 query).
-- If unresolved > 0: unexpected. Report and stop with `needs user decision`.
+**Step 1**: Re-fetch unresolved feedback (re-run Phase U2 checks).
+- Verify all inline threads are resolved (`isResolved = true`).
+- Verify all extracted review bodies and PR comments have been replied to and addressed.
+- If any unresolved feedback remains: unexpected. Report and stop with `needs user decision`.
 
 **Step 2**: Determine `need_re_review` (only when unresolved = 0):
 

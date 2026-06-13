@@ -76,16 +76,35 @@ Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U
    - 見つからない場合: `cycles_done = 0`。
 4. Phase U2 へ進む。
 
-`{RAVEN}:get_review_threads` を実行して全レビュースレッドを取得する:
+## Phase U2: レビュー指摘の収集
+
+以下の3つの手段を用いて、PRに投稿されたすべての指摘を収集します。
+
+### 1. インラインレビュースレッドの取得
+`{RAVEN}:get_review_threads` を実行して全レビュースレッドを取得します:
 - `owner`: `<owner>`
 - `repo`: `<repo>`
 - `pr`: `<pr>`
 
-- `isResolved = false` のすべてのスレッド（inline thread）を収集する。author（`thread-owl`、`thread-owl[bot]`、repository owner、GitHub App、Copilot、human reviewer等）にかかわらず、未解決の指摘はすべて対象とする。
-- また、スレッド（inline thread）形式になっていない、review body や PR コメント（issue comment）に含まれる actionable な（対応が必要な）指摘も収集対象に含める。
-- 各スレッドの `id`（PRRT ノード ID — resolve 用）を記録する。review body などのスレッドになっていないコメントは、必要に応じて返信先（コメントID）や Issue 化の対象として記録する。
-- 未解決の review 指摘（スレッドおよび review body 等の actionable 指摘）が 0 件: `termination_status = READY_TO_MERGE` で **Phase 6.5** へ進む。
-- 1 件以上: **Phase 3** へ進む。
+`isResolved = false` のすべてのスレッド（inline thread）を収集します。author（`thread-owl`、`thread-owl[bot]`、repository owner、GitHub App、Copilot、human reviewer等）にかかわらず、未解決の指摘はすべて対象とします。各スレッドの `id`（PRRT ノード ID — resolve 用）を記録します。
+
+### 2. レビュー本文（review body）の取得
+スレッド化されていないレビューの全体コメント（review body）を取得します。
+```bash
+gh api repos/<owner>/<repo>/pulls/<pr>/reviews --paginate --jq '.[] | select(.body != "") | {id: .id, body: .body, author: .user.login, state: .state}'
+```
+取得したレビュー本文の中から、具体的な修正や対応を求めている `actionable` な指摘を抽出します。コメントの `id`、`author`、`body` を記録します。
+
+### 3. PRコメント（issue comment）の取得
+スレッド形式になっていないPR全体のコメントを取得します。
+```bash
+gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id, body: .body, author: .user.login}'
+```
+取得したコメントの中から、`actionable` な指摘を抽出します。コメントの `id`、`author`、`body` を記録します。
+
+---
+
+未解決の指摘（未解決のインラインスレッド、および返信や対応が行われていない review body / PRコメントの指摘）が 0 件の場合は、`termination_status = READY_TO_MERGE` と判定して **Phase 6.5** へ進みます。1件以上の未解決指摘がある場合は **Phase 3** へ進みます。
 
 ## Phase 3: 分類・採否判断（自律）
 
@@ -130,15 +149,21 @@ Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
 6. ユーザーが明示的に求めない限り force push しない。
 
-**返信＋resolve**:
-スレッドへの返信および解決（resolve）は、`{RAVEN}:reply_and_resolve_review_thread` を使用して順次実行する：
+**返信＋resolve・処理済み記録**:
+
+### 1. インラインレビュースレッドへの返信と解決
+`{RAVEN}:reply_and_resolve_review_thread` を使用して、返信と解決（resolve）を順次実行します：
 - `threadId`: Phase U2 で取得したスレッド ID（PRRT_xxx）
 - `body`: 返信内容（修正内容の報告、または reject 時の理由）
 - `resolve`: `true`（解決する場合）、`false`（解決しない場合）
 
 ※返信のみを行う場合は `{RAVEN}:reply_to_review_thread` を、解決のみを行う場合は `{RAVEN}:resolve_review_thread` を個別に使用してもよい。
+Issue 作成・リンクが不可能な場合を除き常に resolve します。
 
-Issue 作成・リンクが不可能な場合を除き常に resolve する。
+### 2. レビュー本文・PRコメントへの返信と処理済み記録
+レビュー本文やPRコメントは「解決（resolve）」ボタンがないため、返信コメントの投稿とコミットの適用をもって「処理済み」として記録します。
+- **返信**: `{GH}:add_issue_comment`（または `gh pr comment`）を呼び出し、該当のコメントを引用しつつ、対応結果または reject の理由を返信します。
+- **記録**: 返信したコメント ID または対応するコミットを紐づけ、処理済み状態として管理します。
 
 ### Reject 返信ルール
 
@@ -156,8 +181,10 @@ Issue 作成・リンクが不可能な場合を除き常に resolve する。
 
 ## Phase U6: サイクル評価・再レビュー判断
 
-**ステップ 1**: 未解決スレッドを再取得（Phase U2 クエリを再実行）。
-- 未解決 > 0: 想定外。報告して `needs user decision` で停止する。
+**ステップ 1**: 未解決指摘を再取得（Phase U2 の手順を再実行）。
+- インラインスレッドの未解決（`isResolved = false`）が 0 件であること。
+- 抽出したすべての review body / PR コメントの actionable 指摘に対して、対応する返信・処理が完了していること。
+- 未解決の指摘が 1 件以上残っている場合: 想定外。報告して `needs user decision` で停止する。
 
 **ステップ 2**: `need_re_review` を判断（未解決 = 0 の場合のみ）:
 
