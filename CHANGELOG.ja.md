@@ -11,6 +11,8 @@
 
 ### 追加
 
+- `auth=none` ルート向けのデフォルト認証情報とデフォルトユーザー名の動的解決フォールバックを追加: `X-Authenticated-User` および `Authorization` ヘッダーが欠落している場合（`auth=none` プロキシルートなど）に、デフォルト値へフォールバックできるようにしました。`REVIEW_RAVEN_DEFAULT_USER` が明示的に設定されていない場合は、`GITHUB_PERSONAL_ACCESS_TOKEN` を使って GitHub API の `GET /user` を呼び出すことで、トークンの所有者のログイン名を動的に解決してフォールバック値とします。([Issue #80](https://github.com/scottlz0310/review-raven/issues/80))
+
 - `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — thread-owl reviewed-side cycle 用の新 skill を追加。ページネーション付き GraphQL でレビュースレッドを取得し、分類・修正・返信・resolve を行い、再レビューが必要な場合は `@thread-owl re-review requested` コメントを投稿して cycle を完了する。次の reviewer-side cycle は thread-owl webhook が起動する。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 
 ### 変更

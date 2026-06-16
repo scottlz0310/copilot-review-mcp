@@ -713,3 +713,23 @@ func (c *Client) ResolveThread(ctx context.Context, threadID string) (alreadyRes
 	}
 	return false, nil
 }
+
+// GetAuthenticatedUserLogin fetches the login name of the user authenticated by the token.
+// If the token is empty, returns an error.
+func GetAuthenticatedUserLogin(ctx context.Context, token string) (string, error) {
+	if token == "" {
+		return "", errors.New("token must not be empty")
+	}
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	httpClient := oauth2.NewClient(ctx, src)
+	client := github.NewClient(httpClient)
+	user, _, err := client.Users.Get(ctx, "")
+	if err != nil {
+		return "", err
+	}
+	login := user.GetLogin()
+	if login == "" {
+		return "", errors.New("empty login returned from GitHub API")
+	}
+	return login, nil
+}

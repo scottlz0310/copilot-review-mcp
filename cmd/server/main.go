@@ -38,7 +38,23 @@ func main() {
 
 	slog.Info("auth mode: gateway (trusting X-Authenticated-User header from mcp-gateway)")
 
-	authMiddleware := middleware.Auth()
+	// Resolve default credentials for auth=none fallback (e.g., local development).
+	defaultToken := os.Getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+	defaultUser := os.Getenv("REVIEW_RAVEN_DEFAULT_USER")
+	if defaultUser == "" && defaultToken != "" {
+		// Try to resolve user login dynamically from GitHub API whoami endpoint.
+		// Use a short timeout so startup is not blocked indefinitely if offline.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if login, err := ghclient.GetAuthenticatedUserLogin(ctx, defaultToken); err == nil {
+			defaultUser = login
+			slog.Info("resolved default user from GitHub API", "login", login)
+		} else {
+			slog.Warn("failed to resolve default user from token", "err", err)
+		}
+		cancel()
+	}
+
+	authMiddleware := middleware.Auth(defaultUser, defaultToken)
 
 	mux := http.NewServeMux()
 

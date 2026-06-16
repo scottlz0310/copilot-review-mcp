@@ -13,17 +13,23 @@ const ContextKeyLogin contextKey = "github_login"
 const ContextKeyToken contextKey = "github_token"
 
 // Auth returns a middleware that trusts the X-Authenticated-User header and
-// Bearer token injected by an upstream proxy (mcp-gateway). Standalone OAuth
-// has been removed; mcp-gateway is required.
-func Auth() func(http.Handler) http.Handler {
+// Bearer token injected by an upstream proxy (mcp-gateway). If headers are missing,
+// it falls back to the provided defaultLogin and defaultToken (useful for auth=none).
+func Auth(defaultLogin, defaultToken string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			login := r.Header.Get("X-Authenticated-User")
+			if login == "" {
+				login = defaultLogin
+			}
 			if login == "" {
 				writeUnauthorized(w, "missing_proxy_identity")
 				return
 			}
 			token := extractBearer(r)
+			if token == "" {
+				token = defaultToken
+			}
 			if token == "" {
 				writeUnauthorized(w, "missing_token")
 				return
