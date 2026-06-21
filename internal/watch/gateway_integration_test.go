@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v88/github"
 	"golang.org/x/oauth2"
 
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
@@ -249,14 +248,12 @@ func gatewayClientFactoryFor(t *testing.T, args integFactoryArgs) func(ctx conte
 		}
 		reuse := oauth2.ReuseTokenSource(nil, ts)
 		httpClient := oauth2.NewClient(ctx, reuse)
-		ghBaseURL := args.github.baseURL(t).String()
-		gh, err := github.NewClient(github.WithHTTPClient(httpClient), github.WithURLs(&ghBaseURL, &ghBaseURL))
+		c, err := ghclient.NewWithHTTPClientAndURL(httpClient, args.github.baseURL(t).String(), args.threshold)
 		if err != nil {
-			t.Fatalf("github.NewClient: %v", err)
+			t.Fatalf("ghclient.NewWithHTTPClientAndURL: %v", err)
 		}
-		// v4 (GraphQL) is unused by GetReviewData; passing nil is safe and
-		// asserts that nothing on the watch path inadvertently reaches for it.
-		return ghclient.NewWithClients(gh, nil, args.threshold)
+		// v4 (GraphQL) is unused by GetReviewData; NewWithHTTPClientAndURL is REST-only.
+		return c
 	}
 }
 

@@ -104,8 +104,8 @@ func requestHandler(
 		// newer than every prior trigger_log entry; otherwise fall back to
 		// Insert(now()) so that GetLatest() continues to return the most-recent row.
 		var insertErr error
-		if data.LatestCopilotReview != nil {
-			sat := data.LatestCopilotReview.GetSubmittedAt().Time
+		if data.LatestCopilotReview != nil && data.LatestCopilotReview.SubmittedAt != nil {
+			sat := *data.LatestCopilotReview.SubmittedAt
 			if !sat.IsZero() {
 				candidate := sat.UTC().Add(time.Second)
 				latest, latestErr := db.GetLatest(in.Owner, in.Repo, in.PR)
@@ -115,7 +115,7 @@ func requestHandler(
 				if latest == nil || candidate.After(latest.RequestedAt) {
 					// candidate is the most-recent logical request time: record both
 					// sat+1s and the current review ID for ID-based staleness detection.
-					prevID := fmt.Sprintf("%d", data.LatestCopilotReview.GetID())
+					prevID := fmt.Sprintf("%d", data.LatestCopilotReview.ID)
 					_, insertErr = db.InsertWithPrevReviewID(in.Owner, in.Repo, in.PR, "MANUAL", candidate, prevID)
 				} else {
 					_, insertErr = db.Insert(in.Owner, in.Repo, in.PR, "MANUAL")

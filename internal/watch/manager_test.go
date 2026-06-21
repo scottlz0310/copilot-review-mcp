@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v88/github"
-
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/store"
 )
@@ -270,7 +268,7 @@ func TestManagerAuthExpiredFailsWatch(t *testing.T) {
 		ClientFactory: func(_ context.Context, _, _ string) ReviewDataFetcher {
 			return &fakeFetcher{
 				results: []fetchResult{
-					{err: &github.ErrorResponse{Response: &http.Response{StatusCode: http.StatusUnauthorized}}},
+					{err: ghclient.HTTPStatusError(http.StatusUnauthorized)},
 				},
 			}
 		},
@@ -1297,23 +1295,6 @@ func TestManagerLowRateLimitIncludesRetryDetail(t *testing.T) {
 	}
 }
 
-func TestIsRateLimitHTTPError(t *testing.T) {
-	t.Run("matches typed rate limit errors", func(t *testing.T) {
-		if !IsRateLimitHTTPError(&github.RateLimitError{Rate: github.Rate{Remaining: 0}}) {
-			t.Fatal("RateLimitError should be classified as rate limited")
-		}
-		if !IsRateLimitHTTPError(&github.AbuseRateLimitError{Response: &http.Response{StatusCode: http.StatusForbidden}}) {
-			t.Fatal("AbuseRateLimitError should be classified as rate limited")
-		}
-	})
-
-	t.Run("does not treat generic forbidden as rate limited", func(t *testing.T) {
-		err := &github.ErrorResponse{Response: &http.Response{StatusCode: http.StatusForbidden}}
-		if IsRateLimitHTTPError(err) {
-			t.Fatal("generic HTTP 403 should not be classified as rate limited")
-		}
-	})
-}
 
 func TestSnapshotFromStateClonesPointerFields(t *testing.T) {
 	reviewStatus := ghclient.StatusCompleted
@@ -1642,14 +1623,11 @@ func openTestDB(t *testing.T) *store.DB {
 	return db
 }
 
-func newReview(state string, submittedAt *time.Time) *github.PullRequestReview {
-	review := &github.PullRequestReview{
-		State: github.Ptr(state),
+func newReview(state string, submittedAt *time.Time) *ghclient.PullRequestReview {
+	return &ghclient.PullRequestReview{
+		State:       state,
+		SubmittedAt: submittedAt,
 	}
-	if submittedAt != nil {
-		review.SubmittedAt = &github.Timestamp{Time: *submittedAt}
-	}
-	return review
 }
 
 // TestManagerCancelLatestClearsTriggerLogPending verifies that CancelLatest updates

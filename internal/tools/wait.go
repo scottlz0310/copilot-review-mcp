@@ -225,8 +225,8 @@ func buildStatusOutput(data *ghclient.ReviewData, entry *store.TriggerEntry, sta
 		Status:     string(status),
 		IsBlocking: status == ghclient.StatusBlocked,
 	}
-	if data.LatestCopilotReview != nil {
-		s := data.LatestCopilotReview.GetSubmittedAt().UTC().Format(time.RFC3339)
+	if data.LatestCopilotReview != nil && data.LatestCopilotReview.SubmittedAt != nil {
+		s := data.LatestCopilotReview.SubmittedAt.UTC().Format(time.RFC3339)
 		out.LastReviewAt = &s
 	}
 	if entry != nil {

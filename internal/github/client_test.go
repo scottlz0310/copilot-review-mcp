@@ -17,14 +17,11 @@ import (
 )
 
 // newReview creates a PullRequestReview with the given state and optional submittedAt.
-func newReview(state string, submittedAt *time.Time) *github.PullRequestReview {
-	r := &github.PullRequestReview{
-		State: github.Ptr(state),
+func newReview(state string, submittedAt *time.Time) *PullRequestReview {
+	return &PullRequestReview{
+		State:       state,
+		SubmittedAt: submittedAt,
 	}
-	if submittedAt != nil {
-		r.SubmittedAt = &github.Timestamp{Time: *submittedAt}
-	}
-	return r
 }
 
 // TestCopilotBotLoginValue guards against typos in the login constant.
@@ -371,11 +368,8 @@ func TestDeriveStatusIDBasedStaleness(t *testing.T) {
 	recentRequest := now.Add(-time.Second)
 
 	// Helper to build a review with a specific ID and state.
-	newReviewWithID := func(id int64, state string) *github.PullRequestReview {
-		return &github.PullRequestReview{
-			ID:    github.Ptr(id),
-			State: github.Ptr(state),
-		}
+	newReviewWithID := func(id int64, state string) *PullRequestReview {
+		return &PullRequestReview{ID: id, State: state}
 	}
 
 	oldID := "42"

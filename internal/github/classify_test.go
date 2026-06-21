@@ -183,3 +183,21 @@ func TestClassifyGitHubError_UnknownError(t *testing.T) {
 		t.Errorf("ClassifyGitHubError(unknown) = %v, want nil", got)
 	}
 }
+
+func TestIsRateLimitHTTPError(t *testing.T) {
+	t.Run("matches typed rate limit errors", func(t *testing.T) {
+		if !ghclient.IsRateLimitHTTPError(&github.RateLimitError{Rate: github.Rate{Remaining: 0}}) {
+			t.Fatal("RateLimitError should be classified as rate limited")
+		}
+		if !ghclient.IsRateLimitHTTPError(&github.AbuseRateLimitError{Response: &http.Response{StatusCode: http.StatusForbidden}}) {
+			t.Fatal("AbuseRateLimitError should be classified as rate limited")
+		}
+	})
+
+	t.Run("does not treat generic forbidden as rate limited", func(t *testing.T) {
+		err := &github.ErrorResponse{Response: &http.Response{StatusCode: http.StatusForbidden}}
+		if ghclient.IsRateLimitHTTPError(err) {
+			t.Fatal("generic HTTP 403 should not be classified as rate limited")
+		}
+	})
+}
