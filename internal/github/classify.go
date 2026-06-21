@@ -5,10 +5,28 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 
 	"github.com/scottlz0310/review-raven/internal/autherr"
 )
+
+// IsRateLimitHTTPError reports whether err is a GitHub rate-limit HTTP failure
+// (either a primary RateLimitError or a secondary AbuseRateLimitError).
+func IsRateLimitHTTPError(err error) bool {
+	var rateErr *github.RateLimitError
+	if errors.As(err, &rateErr) {
+		return true
+	}
+	var abuseErr *github.AbuseRateLimitError
+	return errors.As(err, &abuseErr)
+}
+
+// HTTPStatusError returns an error that mimics a GitHub REST API error response
+// with the given HTTP status code, handled by ClassifyGitHubError. Intended for
+// tests that need to simulate GitHub API errors without importing go-github directly.
+func HTTPStatusError(statusCode int) error {
+	return &github.ErrorResponse{Response: &http.Response{StatusCode: statusCode}}
+}
 
 // ClassifyGitHubError maps a GitHub API or gateway error to a structured *autherr.AuthError.
 // Returns nil when the error is not a recognized error type (e.g. context.Canceled).

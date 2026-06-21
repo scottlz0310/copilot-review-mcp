@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/go-github/v85/github"
-
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/store"
 )
@@ -1182,13 +1180,10 @@ func resourceURIForWatch(watchID string) string {
 }
 
 // IsRateLimitHTTPError reports whether err is a GitHub rate-limit HTTP failure.
+// Delegates to ghclient.IsRateLimitHTTPError so go-github types are contained
+// within the internal/github package.
 func IsRateLimitHTTPError(err error) bool {
-	var rateErr *github.RateLimitError
-	if errors.As(err, &rateErr) {
-		return true
-	}
-	var abuseErr *github.AbuseRateLimitError
-	return errors.As(err, &abuseErr)
+	return ghclient.IsRateLimitHTTPError(err)
 }
 
 // reviewStatusChanged reports whether the review status has changed between prev and curr.

@@ -7,13 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 
@@ -41,10 +40,11 @@ func new401Server() *httptest.Server {
 
 // make401GitHubClient creates a *ghclient.Client pointing at a server that returns 401.
 func make401GitHubClient(srv *httptest.Server) *ghclient.Client {
-	restClient := github.NewClient(srv.Client())
-	base, _ := url.Parse(srv.URL + "/")
-	restClient.BaseURL = base
-	restClient.UploadURL = base
+	srvURL := srv.URL + "/"
+	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	if err != nil {
+		panic(fmt.Sprintf("make401GitHubClient: %v", err))
+	}
 	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
 	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
 }
@@ -336,10 +336,11 @@ func newStatusServer(status int) *httptest.Server {
 
 // makeStatusGitHubClient creates a *ghclient.Client pointing at the given server.
 func makeStatusGitHubClient(srv *httptest.Server) *ghclient.Client {
-	restClient := github.NewClient(srv.Client())
-	base, _ := url.Parse(srv.URL + "/")
-	restClient.BaseURL = base
-	restClient.UploadURL = base
+	srvURL := srv.URL + "/"
+	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	if err != nil {
+		panic(fmt.Sprintf("makeStatusGitHubClient: %v", err))
+	}
 	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
 	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
 }

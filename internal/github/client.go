@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -76,12 +76,20 @@ const (
 	StatusBlocked      ReviewStatus = "BLOCKED"
 )
 
+// PullRequestReview is a review submitted on a pull request.
+// It is our own type so callers outside this package do not need to import go-github.
+type PullRequestReview struct {
+	ID          int64
+	State       string
+	SubmittedAt *time.Time
+}
+
 // ReviewData holds the raw review information fetched from GitHub.
 type ReviewData struct {
 	// IsCopilotInReviewers is true when Copilot is in the PR's requested reviewers list.
 	IsCopilotInReviewers bool
 	// LatestCopilotReview is the most recently submitted Copilot review, or nil.
-	LatestCopilotReview *github.PullRequestReview
+	LatestCopilotReview *PullRequestReview
 	// RateLimitRemaining is the number of remaining API calls in the current window.
 	RateLimitRemaining int
 	// RateLimitReset is when the rate limit window resets.
@@ -124,8 +132,12 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 			invalidate: invalidate,
 		}
 	}
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		panic(fmt.Sprintf("github.NewClient: %v", err))
+	}
 	return &Client{
-		gh:        github.NewClient(httpClient),
+		gh:        gh,
 		v4:        githubv4.NewClient(httpClient),
 		threshold: threshold,
 	}
@@ -141,8 +153,12 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 // scottlz0310/review-raven#29.
 func NewClientWithTokenSource(ctx context.Context, ts oauth2.TokenSource, threshold time.Duration) *Client {
 	httpClient := oauth2.NewClient(ctx, ts)
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		panic(fmt.Sprintf("github.NewClient: %v", err))
+	}
 	return &Client{
-		gh:        github.NewClient(httpClient),
+		gh:        gh,
 		v4:        githubv4.NewClient(httpClient),
 		threshold: threshold,
 	}
@@ -152,6 +168,17 @@ func NewClientWithTokenSource(ctx context.Context, ts oauth2.TokenSource, thresh
 // Intended for tests that need to inject mock HTTP servers in place of api.github.com.
 func NewWithClients(gh *github.Client, v4 *githubv4.Client, threshold time.Duration) *Client {
 	return &Client{gh: gh, v4: v4, threshold: threshold}
+}
+
+// NewWithHTTPClientAndURL creates a Client from an HTTP client and a base URL string,
+// pointing only at the REST API (v4/GraphQL is unused). Intended for integration tests
+// that stand up a minimal fake HTTP server without importing go-github directly.
+func NewWithHTTPClientAndURL(httpClient *http.Client, baseURL string, threshold time.Duration) (*Client, error) {
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient), github.WithURLs(&baseURL, &baseURL))
+	if err != nil {
+		return nil, fmt.Errorf("github.NewClient: %w", err)
+	}
+	return &Client{gh: gh, threshold: threshold}, nil
 }
 
 // GetReviewData fetches raw reviewer and review data for a PR from GitHub.
@@ -194,10 +221,25 @@ func (c *Client) GetReviewData(ctx context.Context, owner, repo string, prNumber
 			if !isCopilot(r.GetUser().GetLogin()) {
 				continue
 			}
-			if data.LatestCopilotReview == nil ||
-				r.GetSubmittedAt().After(data.LatestCopilotReview.GetSubmittedAt().Time) {
-				r2 := r // avoid loop-variable capture
-				data.LatestCopilotReview = r2
+			var sat *time.Time
+			if ts := r.GetSubmittedAt(); !ts.IsZero() {
+				t := ts.Time
+				sat = &t
+			}
+			var prevSat time.Time
+			if data.LatestCopilotReview != nil && data.LatestCopilotReview.SubmittedAt != nil {
+				prevSat = *data.LatestCopilotReview.SubmittedAt
+			}
+			var currSat time.Time
+			if sat != nil {
+				currSat = *sat
+			}
+			if data.LatestCopilotReview == nil || currSat.After(prevSat) {
+				data.LatestCopilotReview = &PullRequestReview{
+					ID:          r.GetID(),
+					State:       r.GetState(),
+					SubmittedAt: sat,
+				}
 			}
 		}
 		if resp2 == nil || resp2.NextPage == 0 {
@@ -292,18 +334,21 @@ func DeriveStatus(data *ReviewData, requestedAt *time.Time, prevReviewID *string
 			if prevReviewID != nil {
 				// ID-based: relevant only if this is a different review from when the
 				// request was made. Same ID means the old review is still present (stale).
-				currentID := strconv.FormatInt(data.LatestCopilotReview.GetID(), 10)
+				currentID := strconv.FormatInt(data.LatestCopilotReview.ID, 10)
 				relevant = currentID != *prevReviewID
 			} else {
 				// Timestamp-based fallback for entries without prevReviewID (backward compat).
 				// - Use !Before (≥) instead of After (>) to include same-second events.
 				// - Zero submittedAt means the review has no timestamp → treat as stale.
-				sat := data.LatestCopilotReview.GetSubmittedAt()
+				var sat time.Time
+				if data.LatestCopilotReview.SubmittedAt != nil {
+					sat = *data.LatestCopilotReview.SubmittedAt
+				}
 				relevant = !sat.IsZero() && !sat.Before(*effectiveRequestedAt)
 			}
 		}
 		if relevant {
-			if data.LatestCopilotReview.GetState() == "CHANGES_REQUESTED" {
+			if data.LatestCopilotReview.State == "CHANGES_REQUESTED" {
 				return StatusBlocked
 			}
 			return StatusCompleted
@@ -722,7 +767,10 @@ func GetAuthenticatedUserLogin(ctx context.Context, token string) (string, error
 	}
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	httpClient := oauth2.NewClient(ctx, src)
-	client := github.NewClient(httpClient)
+	client, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		return "", fmt.Errorf("github.NewClient: %w", err)
+	}
 	user, _, err := client.Users.Get(ctx, "")
 	if err != nil {
 		return "", err
