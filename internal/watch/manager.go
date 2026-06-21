@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/store"

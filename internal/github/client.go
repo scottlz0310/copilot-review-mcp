@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -124,8 +124,12 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 			invalidate: invalidate,
 		}
 	}
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		panic(fmt.Sprintf("github.NewClient: %v", err))
+	}
 	return &Client{
-		gh:        github.NewClient(httpClient),
+		gh:        gh,
 		v4:        githubv4.NewClient(httpClient),
 		threshold: threshold,
 	}
@@ -141,8 +145,12 @@ func NewClient(ctx context.Context, token string, threshold time.Duration, inval
 // scottlz0310/review-raven#29.
 func NewClientWithTokenSource(ctx context.Context, ts oauth2.TokenSource, threshold time.Duration) *Client {
 	httpClient := oauth2.NewClient(ctx, ts)
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		panic(fmt.Sprintf("github.NewClient: %v", err))
+	}
 	return &Client{
-		gh:        github.NewClient(httpClient),
+		gh:        gh,
 		v4:        githubv4.NewClient(httpClient),
 		threshold: threshold,
 	}
@@ -722,7 +730,10 @@ func GetAuthenticatedUserLogin(ctx context.Context, token string) (string, error
 	}
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	httpClient := oauth2.NewClient(ctx, src)
-	client := github.NewClient(httpClient)
+	client, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		return "", fmt.Errorf("github.NewClient: %w", err)
+	}
 	user, _, err := client.Users.Get(ctx, "")
 	if err != nil {
 		return "", err

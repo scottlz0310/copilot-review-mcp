@@ -6,13 +6,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 
@@ -53,10 +52,11 @@ func newGitHubAPIMock(t *testing.T, submittedAt time.Time) *httptest.Server {
 
 // makeGitHubClient creates a *ghclient.Client that routes all API calls to srv.
 func makeGitHubClient(srv *httptest.Server) *ghclient.Client {
-	restClient := github.NewClient(srv.Client())
-	base, _ := url.Parse(srv.URL + "/")
-	restClient.BaseURL = base
-	restClient.UploadURL = base
+	srvURL := srv.URL + "/"
+	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	if err != nil {
+		panic(fmt.Sprintf("makeGitHubClient: %v", err))
+	}
 	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
 	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
 }

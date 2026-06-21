@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 
 	"github.com/scottlz0310/review-raven/internal/autherr"
 )

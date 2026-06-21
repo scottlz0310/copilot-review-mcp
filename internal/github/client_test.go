@@ -7,13 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/shurcooL/githubv4"
 )
 
@@ -445,10 +444,11 @@ func TestDeriveStatusIDBasedStaleness(t *testing.T) {
 // The caller must call teardown() when done.
 func newTestGHClient(mux *http.ServeMux) (*Client, func()) {
 	srv := httptest.NewServer(mux)
-	gh := github.NewClient(nil)
-	u, _ := url.Parse(srv.URL + "/")
-	gh.BaseURL = u
-	gh.UploadURL = u
+	srvURL := srv.URL + "/"
+	gh, err := github.NewClient(github.WithURLs(&srvURL, &srvURL))
+	if err != nil {
+		panic(fmt.Sprintf("newTestGHClient: %v", err))
+	}
 	return &Client{gh: gh}, srv.Close
 }
 
