@@ -18,7 +18,6 @@
 ### 変更
 
 - `docs/skills/thread-owl-review-cycle.ja.md` / `.md` — PR HEAD 同期ゲートを追加し、未 push の状態で返信・resolve・再レビュー依頼へ進むのを防止するようにしました。また、再レビュー依頼のアノテーションやサマリコメントに `expected_head` を記録するようにし、Phase 8 のマージ条件に PR HEAD SHA の照合ゲート（不一致時は `APPROVED_HEAD_MISMATCH` として停止）を追加しました。([Issue #84](https://github.com/scottlz0310/review-raven/issues/84))
-- `docs/skills/thread-owl-pr-reviewer.ja.md` / `.md` — reviewer-side のレビュー原則と Snapshot Guard チェックルールをまとめたドキュメントをリポジトリに追加しました。
 - `docs/skills/pr-review-cycle.ja.md` / `.md` — Copilot レビュー用の対応サイクルスキルにも同様の PR HEAD 同期ゲートと Phase 8 マージ条件の SHA 照合ゲートを追加しました。([Issue #84](https://github.com/scottlz0310/review-raven/issues/84))
 - `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — 投稿者を問わずすべての未解決レビュー指摘に対応するよう更新。スレッドの取得・返信・解決において、第一選択（プライマリ）として `review-raven` MCP ツール（`get_review_threads`, `reply_and_resolve_review_thread`等）を、使えない場合のフォールバックとして `gh` CLI（GraphQL/REST API）を使用する構成へ変更。レビュー本文（review body）やPRコメント（issue comment）といった非スレッド指摘をページネーション付きで取得・返信・処理済み状態の記録・再確認を行う詳細な手順を明記。さらに、処理済みの非スレッド指摘IDをPRコメント内のアノテーション（`handled_comments`）に永続化し、次回サイクル開始時に復元して重複処理を防ぐ機能を追加。インストール済みSkillテンプレートへの更新手順を追記。([Issue #76](https://github.com/scottlz0310/review-raven/issues/76))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — MCP ポーリング Phase 1 の代替として **Phase 1S**（`mcp-resource-subscriber --json` を使うサブスクリプション方式）を追加。全体フロー図を 2 経路エントリに更新。([Issue #74](https://github.com/scottlz0310/review-raven/issues/74))
