@@ -177,7 +177,7 @@ gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id
 ## Phase 4: 修正＋コミット
 
 1. `git status --short --branch` を実行する。
-2. `accept` した項目のみ修正する.
+2. `accept` した項目のみ修正する。
 3. 修正粒度: 1 スレッド = 1 論理変更単位（atomic）。
 4. 全修正完了後にビルド・テストを再実行する。
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
@@ -198,7 +198,7 @@ gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id
 ### 1. インラインレビュースレッドへの返信と解決
 **第一選択 (review-raven MCP)**: `{RAVEN}:reply_and_resolve_review_thread` を使用して、返信と解決（resolve）を順次実行します：
 - `threadId`: Phase U2 で取得したスレッド ID（PRRT_xxx）
-- `body`: 返信内容（修正内容 of 報告、または reject 時の理由）
+- `body`: 返信内容（修正内容の報告、または reject 時の理由）
 - `resolve`: `true`（解決する場合）、`false`（解決しない場合）
 
 ※返信のみを行う場合は `{RAVEN}:reply_to_review_thread` を、解決のみを行う場合は `{RAVEN}:resolve_review_thread` を個別に使用してもよい。
