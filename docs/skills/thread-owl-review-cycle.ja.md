@@ -51,10 +51,10 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 Phase 0（エントリー・cycles_done 復元）
   |
   v
-Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → Phase U5: 返信/resolve
-                                                                    |
-                                                        Phase U6: サイクル評価
-                                                                    |
+Phase U2: スレッド取得 → Phase 3: 分類 → Phase 4: 修正 → PR HEAD 同期ゲート → Phase U5: 返信/resolve
+                                                                                    |
+                                                                        Phase U6: サイクル評価
+                                                                                    |
                                     ┌───────────────────────────────┘
                                     ↓ READY_TO_MERGE（再レビュー不要）
                           Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
@@ -183,6 +183,16 @@ gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id: .id
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
 6. ユーザーが明示的に求めない限り force push しない。
 
+**PR HEAD 同期ゲート (返信・resolve 前の必須確認)**:
+コミット完了後、スレッドへの返信や解決（resolve）を行う前に、ローカルの修正がリモートPRに正しく反映されていることを確認するため、以下を順番に実行します。
+1. `git status --short --branch` を実行し、未コミットの変更がないことを確認します。
+2. 通常の `git push` を実行します。push 失敗時はそこで処理を停止します。
+3. `git fetch origin` を実行します。
+4. `git rev-parse HEAD` を実行して、ローカルの HEAD SHA を取得します。
+5. `gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` 等を実行して、GitHub上の PR HEAD SHA を取得します。
+6. ローカル HEAD SHA と GitHub 側の PR HEAD SHA が一致することを確認します。不一致の場合は `LOCAL_REMOTE_MISMATCH` エラーとして処理を停止し、ユーザーに報告します。
+7. 一致したことを確認した後に、以下の『返信＋resolve・処理済み記録』へ進みます。
+
 **返信＋resolve・処理済み記録**:
 
 ### 1. インラインレビュースレッドへの返信と解決
@@ -271,10 +281,12 @@ Phase 7 用に記録する: `termination_status`、`final_cycle_fix_types`、`un
 
 修正対応が完了しました。再レビューをお願いします。
 
-<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
+- Expected PR HEAD: `<SHA>`
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,..., expected_head=SHA -->
 ```
 
-`N` には現在の `cycles_done` の値、`handled_comments` にはこれまでに処理を完了した（本サイクルで処理したものを含む）すべての非スレッドコメント ID のリストをカンマ区切りで記入します。これにより、次回のサイクル開始時（Phase 0）に正しく処理済み状態が復元され、重複対応を防ぎます。
+`N` には現在の `cycles_done` の値、`handled_comments` にはこれまでに処理を完了した（本サイクルで処理したものを含む）すべての非スレッドコメント ID のリストをカンマ区切りで記入し、`expected_head` には確認した最新の PR HEAD SHA を記入します。これにより、次回のサイクル開始時（Phase 0）に正しく処理済み状態が復元され、重複対応を防ぎます。
 
 **reviewed-side cycle はここで完了する。Phase U2 には戻らない。**
 次の reviewer-side cycle は thread-owl の `issue_comment.created` webhook → queue → mcp-resource-subscriber 通知によって起動される。
@@ -325,7 +337,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 - cycles_done: N
 - 再レビュー: @thread-owl コメント投稿済み | 不要 | ESCALATE（最大サイクル超過）
 
-<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,..., expected_head=SHA -->
 ```
 
 **`先送り・スコープ外項目` ルール**: `out-of-scope` / `deferred` / `follow-up` を理由とする全 reject をフォローアップ Issue 番号付きでリストしなければならない。「なし」は該当 reject が 0 件かつ Phase U5 ステップ 4 で未解決スレッドがない場合のみ許容。
@@ -340,6 +352,8 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
+- **現在の PR HEAD SHA が、最終レビューで APPROVE された SHA（サマリやレビュー結果に記録された SHA）と一致すること**
+  - 不一致時は `APPROVED_HEAD_MISMATCH` としてマージせず、再レビューへ戻ります。
 
 `termination_status = ESCALATE — Unverified Fix` の場合:
 1. CI グリーン・未解決 0 件でも **マージ準備完了とは報告しない**。

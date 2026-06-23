@@ -221,6 +221,16 @@ Phase 6 で使用する `fix_type` を決定する:
 5. Phase 4 完了後に**まとめて 1 コミット**する（Conventional Commits 形式）。
 6. ユーザーが明示的に求めない限り force push しない。
 
+**PR HEAD 同期ゲート (返信・resolve 前の必須確認)**:
+コミット完了後、スレッドへの返信や解決（resolve）を行う前に、ローカルの修正がリモートPRに正しく反映されていることを確認するため、以下を順番に実行します。
+1. `git status --short --branch` を実行し、未コミットの変更がないことを確認します。
+2. 通常の `git push` を実行します。push 失敗時はそこで処理を停止します。
+3. `git fetch origin` を実行します。
+4. `git rev-parse HEAD` を実行して、ローカルの HEAD SHA を取得します。
+5. `gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` 等を実行して、GitHub上の PR HEAD SHA を取得します。
+6. ローカル HEAD SHA と GitHub 側の PR HEAD SHA が一致することを確認します。不一致の場合は `LOCAL_REMOTE_MISMATCH` エラーとして処理を停止し、ユーザーに報告します。
+7. 一致したことを確認した後に、以下の『Phase 5: スレッド返信＋resolve』へ進みます。
+
 関係のないユーザー変更を revert しない。
 
 ## Phase 5: スレッド返信＋resolve
@@ -370,6 +380,8 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
+- **現在の PR HEAD SHA が、最終レビューで APPROVE された SHA（サマリやレビュー結果に記録された SHA）と一致すること**
+  - 不一致時は `APPROVED_HEAD_MISMATCH` としてマージせず、再レビューへ戻ります。
 
 `termination_status = ESCALATE — Unverified Fix` の場合:
 1. CI グリーン・未解決 0 件でも **マージ準備完了とは報告しない**。

@@ -216,6 +216,16 @@ Determine `fix_type` for Phase 6:
 5. After Phase 4 completes, make **one commit** covering all fixes (Conventional Commits format).
 6. Push without force unless the user explicitly asks otherwise.
 
+**PR HEAD Sync Gate (Required check before reply/resolve)**:
+After committing, and before replying to or resolving any review threads, verify that your local changes are pushed and correctly reflected on the remote PR:
+1. Run `git status --short --branch` to ensure there are no uncommitted changes.
+2. Run `git push` to push the commit. If the push fails, stop the process.
+3. Run `git fetch origin` to update references.
+4. Run `git rev-parse HEAD` to get the local HEAD SHA.
+5. Run `gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid'` to get the PR HEAD SHA on GitHub.
+6. Verify that the local HEAD SHA matches the GitHub PR HEAD SHA. If they do not match, stop execution as `LOCAL_REMOTE_MISMATCH` and report to the user.
+7. Only after verifying they match, proceed to "Phase 5: Reply + Resolve Threads" below.
+
 Do not revert unrelated user changes.
 
 ## Phase 5: Reply + Resolve Threads
@@ -357,6 +367,8 @@ Merge conditions (must be satisfied when the user instructs a merge):
 - All threads replied
 - No unresolved `blocking` items
 - `termination_status` is `READY_TO_MERGE` or `ESCALATE — Clean`
+- **The current PR HEAD SHA matches the SHA approved in the latest review (recorded in the summary or review results).**
+  - If they do not match, stop execution as `APPROVED_HEAD_MISMATCH` and do not merge; return to re-review.
 
 If `termination_status = ESCALATE — Unverified Fix`:
 1. Do **not** report the PR as ready to merge, even if CI is green.
