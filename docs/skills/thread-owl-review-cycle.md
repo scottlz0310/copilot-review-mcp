@@ -51,10 +51,10 @@ Re-review requests are posted as `@thread-owl re-review requested` PR comments �
 Phase 0 (entry + cycles_done recovery)
   |
   v
-Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → Phase U5: Reply/Resolve
-                                                                          |
-                                                              Phase U6: Cycle evaluation
-                                                                          |
+Phase U2: Collect threads → Phase 3: Classify → Phase 4: Fix → PR HEAD Sync Gate → Phase U5: Reply/Resolve
+                                                                                        |
+                                                                            Phase U6: Cycle evaluation
+                                                                                        |
                                         ┌─────────────────────────────────┘
                                         ↓ READY_TO_MERGE (need_re_review=no)
                               Phase 6.5 → Phase 6.6 → Phase 7 → Phase 8
@@ -185,6 +185,16 @@ Determine `fix_type`:
 5. Make **one commit** covering all fixes (Conventional Commits format).
 6. Push without force unless the user explicitly asks otherwise.
 
+**PR HEAD Sync Gate (Required check before reply/resolve)**:
+After committing, and before replying to or resolving any review threads, verify that your local changes are pushed and correctly reflected on the remote PR:
+1. Run `git status --short --branch` to ensure there are no uncommitted changes.
+2. Run `git push` to push the commit. If the push fails, stop the process.
+3. Run `git fetch origin` to update references.
+4. Run `git rev-parse HEAD` to get the local HEAD SHA.
+5. Run `gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid'` to get the PR HEAD SHA on GitHub.
+6. Verify that the local HEAD SHA matches the GitHub PR HEAD SHA. If they do not match, stop execution as `LOCAL_REMOTE_MISMATCH` and report to the user.
+7. Only after verifying they match, proceed to "Reply, Resolve, & Record Progress" below.
+
 **Reply, Resolve, & Record Progress**:
 
 ### 1. Reply and Resolve Inline Review Threads
@@ -273,10 +283,12 @@ Post via `{GH}:add_issue_comment`:
 
 The requested changes have been addressed. Please review again.
 
-<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
+- Expected PR HEAD: `<SHA>`
+
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,..., expected_head=SHA -->
 ```
 
-Replace `N` with the current value of `cycles_done`, and `handled_comments` with a comma-separated list of all processed non-thread comment IDs (including those addressed in this cycle). This annotation is used to recover states at Phase 0 of the next cycle.
+Replace `N` with the current value of `cycles_done`, `handled_comments` with a comma-separated list of all processed non-thread comment IDs (including those addressed in this cycle), and `expected_head` with the verified latest PR HEAD SHA. This annotation is used to recover states at Phase 0 of the next cycle.
 
 **The reviewed-side cycle ends here. Do NOT loop back to Phase U2.**
 The next reviewer-side cycle is triggered by thread-owl's `issue_comment.created` webhook → queue → mcp-resource-subscriber notification.
@@ -326,7 +338,7 @@ Post via `{GH}:add_issue_comment`:
 - cycles_done: N
 - Re-review: requested via @thread-owl comment | not needed | ESCALATE (max cycles)
 
-<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,... -->
+<!-- review-raven: cycles_done=N, handled_comments=ID1,ID2,..., expected_head=SHA -->
 ```
 
 **`Deferred / Scope-out Items` rules:** MUST list every `out-of-scope` / `deferred` / `follow-up` reject with follow-up issue number. `- None` only when zero such rejects exist AND no thread was left unresolved.
@@ -341,6 +353,8 @@ Merge conditions:
 - All threads replied
 - No unresolved `blocking` items
 - `termination_status` is `READY_TO_MERGE` or `ESCALATE — Clean`
+- **The current PR HEAD SHA matches the SHA approved in the latest review (recorded in the summary or review results).**
+  - If they do not match, stop execution as `APPROVED_HEAD_MISMATCH` and do not merge; return to re-review.
 
 If `termination_status = ESCALATE — Unverified Fix`:
 1. Do NOT report as ready to merge.
