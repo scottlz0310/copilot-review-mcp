@@ -1,132 +1,134 @@
-# Spike 調査結果: リクエストスコープの通常 tool call で REAUTH_REQUIRED が頻発する原因
+# Spike Investigation: Frequent REAUTH_REQUIRED on Request-Scoped (Non-Watch) Tool Calls
 
-> 対象 Issue: https://github.com/scottlz0310/review-raven/issues/87
-> 調査リポジトリ: `scottlz0310/review-raven`, `scottlz0310/mcp-gateway`, `scottlz0310/Mcp-Docker`
-> 調査日: 2026-07-02
+[日本語](spike-request-scoped-reauth.ja.md)
 
----
-
-## 結論（先出し）
-
-**根本原因は mcp-gateway builtin mode にある。** builtin mode の token 交換では GitHub provider アクセストークンが identity 解決後に破棄され、トークンストア（subject index）には gateway 発行の RS256 JWT しか残らない。そのため:
-
-- `upstream_provider_token=true` ルートが呼ぶ `EnsureFreshAccessTokenForSubject` は「provider トークン」として **gateway JWT を返し**、それが review-raven に `Authorization: Bearer` として注入される
-- review-raven はそのトークンをそのまま GitHub API に渡す → GitHub が HTTP 401 → `REAUTH_REQUIRED` に分類
-
-つまり **GitHub 側の認証は一度も失効しておらず、そもそも GitHub トークンが review-raven に届いていない**。決定論的に毎回失敗するため「初回呼び出しで即座に発生」「以前から頻発」という観測と一致する。同時刻に `gh api graphql` が成功したのは、`gh` が自前のクレデンシャル（gateway と無関係）を使うためである。
-
-**修正の帰属先: mcp-gateway**。review-raven 側の判定ロジック（`internal/github/classify.go`）は「GitHub が 401 を返した」という事実を正しく分類しており、コード修正は不要。
+> Target Issue: https://github.com/scottlz0310/review-raven/issues/87
+> Investigated repositories: `scottlz0310/review-raven`, `scottlz0310/mcp-gateway`, `scottlz0310/Mcp-Docker`
+> Investigation date: 2026-07-02
 
 ---
 
-## 1. REAUTH_REQUIRED を返す判定ロジック（調査依頼 1）
+## Conclusion (up front)
 
-`REAUTH_REQUIRED` の生成箇所は `internal/middleware/auth.go` ではなく `internal/github/classify.go` である。
+**The root cause lies in mcp-gateway builtin mode.** In builtin mode's token exchange, the GitHub provider access token is discarded after identity resolution, and only the gateway-issued RS256 JWT remains in the token store (subject index). As a result:
 
-| 場所 | トリガー条件 |
+- `EnsureFreshAccessTokenForSubject`, called by `upstream_provider_token=true` routes, returns the **gateway JWT as the "provider token"**, and it is injected into review-raven as `Authorization: Bearer`
+- review-raven passes that token straight to the GitHub API → GitHub returns HTTP 401 → classified as `REAUTH_REQUIRED`
+
+In other words, **GitHub-side authentication never expired; a GitHub token never reaches review-raven in the first place**. The failure is deterministic on every call, matching the observations "fails immediately on the first call" and "has been frequent for a while". `gh api graphql` succeeded at the same time because `gh` uses its own credentials, unrelated to the gateway.
+
+**Fix attribution: mcp-gateway.** review-raven's classification logic (`internal/github/classify.go`) correctly classifies the fact that "GitHub returned 401"; no review-raven code change is required.
+
+---
+
+## 1. Where REAUTH_REQUIRED is produced (investigation request 1)
+
+`REAUTH_REQUIRED` is generated in `internal/github/classify.go`, not in `internal/middleware/auth.go`.
+
+| Location | Trigger condition |
 |---|---|
-| `classify.go:60` | gateway sentinel `ErrGatewaySubjectGone`（Phase B whoami 経路のみ） |
-| `classify.go:96` | REST API エラー `*github.ErrorResponse` で HTTP 401 |
-| `classify.go:115` | GraphQL (shurcooL/githubv4) の plain error に `"401 Unauthorized"` を含む |
+| `classify.go:60` | Gateway sentinel `ErrGatewaySubjectGone` (Phase B whoami path only) |
+| `classify.go:96` | REST API error `*github.ErrorResponse` with HTTP 401 |
+| `classify.go:115` | GraphQL (shurcooL/githubv4) plain error containing `"401 Unauthorized"` |
 
-`get_review_threads` は GraphQL 経路（`client.go` の `GetReviewThreads` → `c.v4.Query`）なので、今回の観測は `classify.go:115`（または REST 系ツールなら `:96`）に該当する。**トリガーは常に「GitHub API 本体が 401 を返した」ことであり、review-raven が独自にトークンを検証して invalid と判定する経路は存在しない**（仮説 2 は棄却）。
+`get_review_threads` goes through the GraphQL path (`GetReviewThreads` in `client.go` → `c.v4.Query`), so the observed error corresponds to `classify.go:115` (or `:96` for REST-based tools). **The trigger is always "the GitHub API itself returned 401"; there is no code path where review-raven validates the token on its own and judges it invalid** (hypothesis 2 rejected).
 
-`internal/middleware/auth.go` はヘッダーの有無しか見ない（存在すれば無検証で context に格納、欠落時のみ 401 JSON `missing_proxy_identity` / `missing_token` を返す）。この middleware の 401 は `AuthError` JSON 形式ではないため、観測されたエラーの発生源ではない。
+`internal/middleware/auth.go` only checks header presence (headers are stored into the context without validation; only when missing does it return the 401 JSON `missing_proxy_identity` / `missing_token`). That middleware 401 is not in the `AuthError` JSON format, so it is not the source of the observed error.
 
-## 2. 非 watch 経路の token の完全な流れ（調査依頼 2）
+## 2. Complete token flow on the non-watch path (investigation request 2)
 
 ```
-[クライアント (Claude Code)]
-    │  Authorization: Bearer <gateway JWT>   ← builtin mode でクライアントに発行されるのは
-    │                                           GitHub トークンではなく gateway 署名 RS256 JWT
+[Client (Claude Code)]
+    │  Authorization: Bearer <gateway JWT>   ← in builtin mode the client receives a
+    │                                           gateway-signed RS256 JWT, not a GitHub token
     ▼
-[mcp-gateway / ルート: ROUTE_REVIEW_RAVEN (upstream_provider_token=true)]
+[mcp-gateway / route: ROUTE_REVIEW_RAVEN (upstream_provider_token=true)]
     │
-    ├─ middleware.Auth: gateway JWT を検証 → subject (GitHub login) を context へ
+    ├─ middleware.Auth: verifies the gateway JWT → subject (GitHub login) into context
     │
     ├─ NewProviderTokenMiddleware (proxy/handler.go:61)
     │     └─ EnsureFreshAccessTokenForSubject(subject)  (auth/handler.go:1439)
     │           └─ store.LatestBySubject(subject)
-    │                 └─ subject index には gateway JWT しか無い ★根本原因
-    │           └─ rotation メタデータ無し → lenient branch → JWT をそのまま返す
+    │                 └─ subject index contains only the gateway JWT ★root cause
+    │           └─ no rotation metadata → lenient branch → returns the JWT as-is
     │
     ├─ ReverseProxy.Rewrite (proxy/handler.go:210-214)
-    │     └─ Authorization: Bearer <gateway JWT> を注入   ← GitHub トークンではない
-    │     └─ X-Authenticated-User: <login> を注入
+    │     └─ injects Authorization: Bearer <gateway JWT>   ← not a GitHub token
+    │     └─ injects X-Authenticated-User: <login>
     ▼
 [review-raven / internal/middleware/auth.go]
-    │  ヘッダーを無検証で request context に格納
+    │  stores headers into the request context without validation
     ▼
 [tools/auth_request.go: newGitHubClientProvider]
-    │  tokenFromToolRequest → gateway JWT を取得
-    │  ghclient.NewClient(ctx, <gateway JWT>, ...)   ← per-request の static token client
+    │  tokenFromToolRequest → obtains the gateway JWT
+    │  ghclient.NewClient(ctx, <gateway JWT>, ...)   ← per-request static-token client
     ▼
 [GitHub API (GraphQL / REST)]
-    │  Bearer が GitHub トークンではない → HTTP 401
+    │  Bearer is not a GitHub token → HTTP 401
     ▼
 [internal/github/classify.go:96/115]
     └─ autherr.NewReauthRequired() → {"error_type":"REAUTH_REQUIRED", ...}
 ```
 
-watch 経路との違い: この経路にトークンスナップショットや `manager.ctx` は関与しない（Issue の想定通り）。ただし**注入されるトークン自体が最初から GitHub API に対して無効**なため、鮮度の問題以前に失敗する。
+Difference from the watch path: no token snapshot or `manager.ctx` is involved in this path (as the Issue assumed). However, **the injected token itself is invalid against the GitHub API from the start**, so the failure occurs before token freshness even matters.
 
-## 3. gateway が注入するトークンの生成・refresh タイミング（調査依頼 3）
+## 3. Generation and refresh timing of the token the gateway injects (investigation request 3)
 
-### 3.1 builtin mode の token 交換で GitHub トークンが破棄される
+### 3.1 Builtin-mode token exchange discards the GitHub token
 
 `mcp-gateway/internal/auth/handler.go`:
 
-- **auth-code flow** (`tokenAuthCode`, builtin 分岐): 「GitHub token was used only for identity resolution; it must not reach the client」として gateway JWT を生成し、`CacheToken(gatewayToken, subject, ...)` で **JWT のみ**をキャッシュ。GitHub トークンと refresh メタデータは**どこにも保存されない**（`persistProviderRefresh` の呼び出し自体がない）
-- **device flow** (`tokenDeviceGrant`, builtin 時): `CacheToken(gatewayJWT, ...)` の後に `persistProviderRefresh(completed.AccessToken /* GitHub トークン */, ...)` を呼ぶが、`RecordProviderRefresh` (`session.go:713`) は「キャッシュ未登録のトークンをキーにした場合は意図的に no-op」と文書化されており、GitHub トークンは `CacheToken` されていないため**メタデータは黙って捨てられる**
+- **auth-code flow** (`tokenAuthCode`, builtin branch): per the comment "GitHub token was used only for identity resolution; it must not reach the client", a gateway JWT is generated and **only the JWT** is cached via `CacheToken(gatewayToken, subject, ...)`. The GitHub token and its refresh metadata are **stored nowhere** (there is no `persistProviderRefresh` call at all)
+- **device flow** (`tokenDeviceGrant`, builtin): after `CacheToken(gatewayJWT, ...)`, it calls `persistProviderRefresh(completed.AccessToken /* GitHub token */, ...)`, but `RecordProviderRefresh` (`session.go:713`) is documented as an intentional no-op when keyed by a token that was never cached — the GitHub token was not `CacheToken`'d, so **the metadata is silently dropped**
 
-### 3.2 EnsureFreshAccessTokenForSubject は JWT を「provider トークン」として返す
+### 3.2 EnsureFreshAccessTokenForSubject returns the JWT as the "provider token"
 
-`EnsureFreshAccessTokenForSubject` (`auth/handler.go:1439`) は Phase B（#76, 2026-05-15）で実装された。**当時はクライアントトークン = GitHub トークンだったため `LatestBySubject` の結果をそのまま provider トークンとして返す前提が成立していた**。2026-06-17 の builtin JWT 化（#127）でこの前提が崩れたが、関数側は追従していない。subject index に JWT しか無いため:
+`EnsureFreshAccessTokenForSubject` (`auth/handler.go:1439`) was implemented in Phase B (#76, 2026-05-15). **At that time the client token WAS the GitHub token, so returning the result of `LatestBySubject` as the provider token was a valid assumption.** The builtin JWT migration (#127, 2026-06-17) broke that assumption, but the function was never updated. Since the subject index contains only JWTs:
 
-1. `LatestBySubject` → gateway JWT を返す
-2. JWT の `TokenRecord` に `ProviderRefreshToken` / `ProviderAccessExpiry` が無い → rotation 不適用
-3. lenient branch で **JWT をそのまま `AccessToken` として返す**（エラーにならないため、proxy 側の warning ログも出ない）
+1. `LatestBySubject` → returns the gateway JWT
+2. The JWT's `TokenRecord` has no `ProviderRefreshToken` / `ProviderAccessExpiry` → rotation is not applicable
+3. The lenient branch **returns the JWT as-is as `AccessToken`** (no error is raised, so no warning appears in the proxy logs either)
 
-なお `TokenRecord` には provider アクセストークンを保持するフィールド自体が存在しない（`Subject` / `Audiences` / `ExpiresAt` / `ProviderRefreshToken` / `ProviderAccessExpiry` / `RotationPermanentlyFailed` / `Nonce` のみ）。
+Note that `TokenRecord` has no field to hold a provider access token at all (only `Subject` / `Audiences` / `ExpiresAt` / `ProviderRefreshToken` / `ProviderAccessExpiry` / `RotationPermanentlyFailed` / `Nonce`).
 
-### 3.3 タイムライン（ローカル docker ログ・git 履歴で裏取り済み）
+### 3.3 Timeline (corroborated with local docker logs and git history)
 
-| 日時 (UTC) | 事象 |
+| Date/time (UTC) | Event |
 |---|---|
-| 2026-05-15 | mcp-gateway #76: Phase B `EnsureFreshAccessTokenForSubject` 実装（クライアントトークン = GitHub トークン前提） |
-| 2026-06-17 | mcp-gateway #127: builtin mode で gateway JWT 発行に変更。**前提が崩れた起点 =「以前から頻発」の起点** |
-| 2026-06-27 | Mcp-Docker #192: review-raven ルートに gateway OAuth 適用。`upstream_provider_token` 未設定のため gateway クライアント JWT がそのまま素通しで注入され、全 tool call が REAUTH_REQUIRED に |
-| 2026-06-30 13:19 | mcp-gateway #187: `upstream_provider_token` 実装（本問題の修正を意図） |
-| 2026-06-30 22:18 | Mcp-Docker #198 適用でコンテナ再作成。gateway 起動ログで `upstream_provider_token: true` を確認。**しかし 3.1/3.2 の通り builtin mode では JWT が返るため効果なし** |
-| 2026-07-01 01:23 | ユーザーが device flow で GitHub 再認証成功（gateway audit ログ） |
-| 2026-07-01 01:24-25 | squirrel-notifier PR#112 検証セッションで `get_review_threads` が即 REAUTH_REQUIRED（**再認証直後でも失敗** = トークン鮮度の問題ではない決定的証拠）。gateway ログに provider token 系 warning なし = `EnsureFreshAccessTokenForSubject` は「成功」して JWT を返していた |
+| 2026-05-15 | mcp-gateway #76: Phase B `EnsureFreshAccessTokenForSubject` implemented (assumes client token = GitHub token) |
+| 2026-06-17 | mcp-gateway #127: builtin mode switches to issuing gateway JWTs. **The point where the assumption broke = origin of "frequent for a while"** |
+| 2026-06-27 | Mcp-Docker #192: gateway OAuth applied to the review-raven route. With `upstream_provider_token` unset, the gateway client JWT is forwarded as-is, and every tool call becomes REAUTH_REQUIRED |
+| 2026-06-30 13:19 | mcp-gateway #187: `upstream_provider_token` implemented (intended to fix this problem) |
+| 2026-06-30 22:18 | Container recreated with Mcp-Docker #198. Gateway startup log confirms `upstream_provider_token: true`. **However, per 3.1/3.2 the builtin mode still returns the JWT, so it has no effect** |
+| 2026-07-01 01:23 | User completes GitHub re-authentication via device flow (gateway audit log) |
+| 2026-07-01 01:24-25 | In the squirrel-notifier PR#112 verification session, `get_review_threads` fails immediately with REAUTH_REQUIRED (**failing right after re-authentication = decisive evidence this is not a token-freshness problem**). No provider-token warnings in the gateway log = `EnsureFreshAccessTokenForSubject` "succeeded" and returned the JWT |
 
-### 3.4 再現条件
+### 3.4 Reproduction conditions
 
-**mcp-gateway が builtin mode で稼働し、review-raven ルートを経由する tool call を行うこと。** それだけで 100% 再現する（レアな edge case ではない）。`upstream_provider_token=true` の有無は結果を変えない（無し = クライアント JWT 素通し、有り = ストアから取り出した同じ JWT）。
+**Run mcp-gateway in builtin mode and make any tool call through the review-raven route.** That alone reproduces the failure 100% of the time (it is not a rare edge case). Whether `upstream_provider_token=true` is set does not change the outcome (unset = the client JWT is forwarded as-is; set = the same JWT is fetched from the store).
 
-## 4. 修正の帰属判断（調査依頼 4）
+## 4. Fix attribution (investigation request 4)
 
-**mcp-gateway。** 修正の方向性:
+**mcp-gateway.** Direction of the fix:
 
-1. builtin mode の token 交換（auth-code / device / refresh の全 grant）で GitHub provider アクセストークンと refresh メタデータを gateway JWT の `TokenRecord` に紐付けて保持する（例: `TokenRecord.ProviderAccessToken` フィールド追加 + SQLite ストアの migration）
-2. `EnsureFreshAccessTokenForSubject` は record の provider アクセストークンを返し、rotation も provider トークンに対して行う
-3. Phase B `/internal/v1/whoami`（watch 経路）も同関数を使うため、**同修正で watch 側の delegated access も正しく GitHub トークンを返すようになる**（現状は同じ欠陥の影響下にある）
+1. In builtin mode's token exchange (all grants: auth-code / device / refresh), retain the GitHub provider access token and refresh metadata tied to the gateway JWT's `TokenRecord` (e.g., add a `TokenRecord.ProviderAccessToken` field + SQLite store migration)
+2. `EnsureFreshAccessTokenForSubject` returns the record's provider access token, and rotation also operates on the provider token
+3. Phase B `/internal/v1/whoami` (watch path) uses the same function, so **the same fix makes the watch-side delegated access return proper GitHub tokens as well** (it is currently affected by the same defect)
 
-review-raven 側:
+On the review-raven side:
 
-- `classify.go` の分類は正しい（GitHub の 401 を REAUTH_REQUIRED にマップ）。修正不要
-- 任意の改善候補（本 spike のスコープ外・未実施）: JWT 形状（`eyJ...` 3 セグメント）のトークンを検知して「gateway 設定不備」を示す明示的エラーを返せば、`GitHub authentication has expired` という誤解を招くメッセージを避けられる。root cause 修正後は発生しない経路のため必須ではない
+- The classification in `classify.go` is correct (maps GitHub's 401 to REAUTH_REQUIRED). No fix needed
+- Optional improvement candidate (out of scope for this spike, not implemented): detecting JWT-shaped tokens (`eyJ...`, 3 segments) and returning an explicit error indicating "gateway misconfiguration" would avoid the misleading `GitHub authentication has expired` message. Not essential, since this path disappears once the root cause is fixed
 
-## 5. 除外した仮説
+## 5. Rejected hypotheses
 
-| 仮説 | 判定 |
+| Hypothesis | Verdict |
 |---|---|
-| review-raven の auth middleware が有効なヘッダーを invalid と判定 | **棄却**。middleware はヘッダー有無しか見ない。REAUTH_REQUIRED は GitHub 本体の 401 由来 |
-| gateway 注入トークンが「注入時点で既に失効」 | **部分的に正しいが不正確**。失効した GitHub トークンではなく、**最初から GitHub トークンですらない**（gateway JWT） |
-| watch トークンスナップショットの陳腐化（mcp-gateway#70） | 無関係（Issue の想定通り）。ただし whoami 経路も本欠陥の影響下にあり、#70 で扱った「ローテーション陳腐化」以前の問題が存在する |
+| review-raven's auth middleware misjudges valid headers as invalid | **Rejected.** The middleware only checks header presence. REAUTH_REQUIRED comes from GitHub's own 401 |
+| The token the gateway injects is "already expired at injection time" | **Partially right but imprecise.** It is not an expired GitHub token — it is **not a GitHub token at all** (a gateway JWT) |
+| Staleness of the watch token snapshot (mcp-gateway#70) | Unrelated (as the Issue assumed). However, the whoami path is also affected by this defect, which precedes the "rotation staleness" problem handled in #70 |
 
 ## 6. Follow-up
 
-- mcp-gateway に修正 Issue を起票済み: [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) — builtin mode で provider アクセストークンを保持し、`EnsureFreshAccessTokenForSubject` が GitHub トークンを返すようにする
-- 修正がデプロイされるまで、review-raven ルート経由の GitHub 操作は `gh` CLI / github(MCP) へのフォールバックが引き続き必要
+- Fix issue filed against mcp-gateway: [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) — retain the provider access token in builtin mode so `EnsureFreshAccessTokenForSubject` returns the GitHub token
+- Until the fix is deployed, GitHub operations via the review-raven route still require falling back to the `gh` CLI / github (MCP)

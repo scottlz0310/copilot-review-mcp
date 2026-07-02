@@ -11,7 +11,7 @@
 
 ### 追加
 
-- `spike-request-scoped-reauth.md` — `get_review_threads` 等のリクエストスコープ（非 watch）tool call で `REAUTH_REQUIRED` が頻発する問題の spike 調査結果。根本原因は mcp-gateway builtin mode が token 交換時に GitHub provider アクセストークンを破棄するため、`EnsureFreshAccessTokenForSubject` が gateway RS256 JWT を Bearer として review-raven に渡し、GitHub が毎回 401 を返すこと。修正は mcp-gateway 側に帰属（[mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) として起票済み）。review-raven 側のコード修正は不要。([Issue #87](https://github.com/scottlz0310/review-raven/issues/87))
+- `spike-request-scoped-reauth.md` / `.ja.md` — `get_review_threads` 等のリクエストスコープ（非 watch）tool call で `REAUTH_REQUIRED` が頻発する問題の spike 調査結果。根本原因は mcp-gateway builtin mode が token 交換時に GitHub provider アクセストークンを破棄するため、`EnsureFreshAccessTokenForSubject` が gateway RS256 JWT を Bearer として review-raven に渡し、GitHub が毎回 401 を返すこと。修正は mcp-gateway 側に帰属（[mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) として起票済み）。review-raven 側のコード修正は不要。([Issue #87](https://github.com/scottlz0310/review-raven/issues/87))
 
 - `auth=none` ルート向けのデフォルト認証情報とデフォルトユーザー名の動的解決フォールバックを追加: `X-Authenticated-User` および `Authorization` ヘッダーが欠落している場合（`auth=none` プロキシルートなど）に、デフォルト値へフォールバックできるようにしました。`REVIEW_RAVEN_DEFAULT_USER` が明示的に設定されていない場合は、`GITHUB_PERSONAL_ACCESS_TOKEN` を使って GitHub API の `GET /user` を呼び出すことで、トークンの所有者のログイン名を動的に解決してフォールバック値とします。([Issue #80](https://github.com/scottlz0310/review-raven/issues/80))
 
