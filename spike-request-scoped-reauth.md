@@ -131,4 +131,4 @@ On the review-raven side:
 ## 6. Follow-up
 
 - Fix issue filed against mcp-gateway: [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) — retain the provider access token in builtin mode so `EnsureFreshAccessTokenForSubject` returns the GitHub token
-- Until the fix is deployed, GitHub operations via the review-raven route still require falling back to the `gh` CLI / github (MCP)
+- Until the fix is deployed, GitHub operations via the review-raven route still require falling back to the `gh` CLI / the `github` MCP server

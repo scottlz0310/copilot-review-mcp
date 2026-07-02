@@ -131,4 +131,4 @@ review-raven 側:
 ## 6. Follow-up
 
 - mcp-gateway に修正 Issue を起票済み: [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188) — builtin mode で provider アクセストークンを保持し、`EnsureFreshAccessTokenForSubject` が GitHub トークンを返すようにする
-- 修正がデプロイされるまで、review-raven ルート経由の GitHub 操作は `gh` CLI / github(MCP) へのフォールバックが引き続き必要
+- 修正がデプロイされるまで、review-raven ルート経由の GitHub 操作は `gh` CLI / `github` MCP サーバーへのフォールバックが引き続き必要
