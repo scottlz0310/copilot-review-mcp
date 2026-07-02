@@ -276,6 +276,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	RegisterRequestTool(srv, clientProvider, db)
 	RegisterThreadTools(srv, clientProvider)
 	RegisterCycleTool(srv, clientProvider, db)
+	RegisterDiagnoseTokenTool(srv)
 
 	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
 	if sessionTimeout == 0 {

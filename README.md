@@ -35,6 +35,7 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `resolve_review_thread` | Mark a thread as resolved |
 | `reply_and_resolve_review_thread` | Reply then resolve in sequence |
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
+| `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
 
 See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md) and [docs/skills/pr-review-cycle.md](docs/skills/pr-review-cycle.md). For the architecture and responsibility boundaries with Thread Owl and mcp-resource-subscriber, see [docs/architecture.md](docs/architecture.md).
 

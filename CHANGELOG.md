@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `diagnose_github_token` MCP tool — reports the current request's token login and OAuth scopes (parsed from GitHub's `X-OAuth-Scopes` response header on `GET /user`), without ever returning the raw token. Added to help diagnose cases where read operations succeed but a write operation (e.g. `reply_and_resolve_review_thread`) fails with `PERMISSION_DENIED` due to insufficient token scope. ([Issue #89](https://github.com/scottlz0310/review-raven/issues/89))
+
 - `spike-request-scoped-reauth.md` / `.ja.md` — spike investigation into frequent `REAUTH_REQUIRED` on request-scoped (non-watch) tool calls such as `get_review_threads`. Root cause: mcp-gateway builtin mode discards the GitHub provider access token at token exchange, so `EnsureFreshAccessTokenForSubject` hands the gateway RS256 JWT to review-raven as the Bearer token and GitHub rejects it with 401 on every call. Fix belongs to mcp-gateway (filed as [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188)); no review-raven code change required. ([Issue #87](https://github.com/scottlz0310/review-raven/issues/87))
 
 - Default credentials and dynamic default user resolution for `auth=none` routes: When `X-Authenticated-User` and `Authorization` headers are missing (such as in `auth=none` proxy routes), the server can fall back to default values. The default user is dynamically resolved by calling GitHub's `GET /user` endpoint using the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable if `REVIEW_RAVEN_DEFAULT_USER` is not explicitly set. ([Issue #80](https://github.com/scottlz0310/review-raven/issues/80))

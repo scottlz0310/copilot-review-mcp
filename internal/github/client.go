@@ -762,22 +762,60 @@ func (c *Client) ResolveThread(ctx context.Context, threadID string) (alreadyRes
 // GetAuthenticatedUserLogin fetches the login name of the user authenticated by the token.
 // If the token is empty, returns an error.
 func GetAuthenticatedUserLogin(ctx context.Context, token string) (string, error) {
+	diag, err := GetTokenDiagnostics(ctx, token)
+	if err != nil {
+		return "", err
+	}
+	return diag.Login, nil
+}
+
+// TokenDiagnostics holds identity and scope information for a GitHub token,
+// resolved from GET /user. It never carries the token's raw value.
+type TokenDiagnostics struct {
+	// Login is the authenticated user's GitHub login.
+	Login string
+	// Scopes is the OAuth scope list granted to the token, parsed from the
+	// X-OAuth-Scopes response header. Empty for fine-grained PATs and GitHub
+	// App installation tokens, which do not set this header.
+	Scopes []string
+}
+
+// GetTokenDiagnostics fetches the authenticated user's login and the token's
+// OAuth scopes (from the X-OAuth-Scopes response header on GET /user).
+// Intended to diagnose PERMISSION_DENIED failures where read operations
+// succeed but a write operation is rejected because the token's scope does
+// not cover it (review-raven#89). The raw token value is never returned.
+func GetTokenDiagnostics(ctx context.Context, token string) (TokenDiagnostics, error) {
 	if token == "" {
-		return "", errors.New("token must not be empty")
+		return TokenDiagnostics{}, errors.New("token must not be empty")
 	}
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	httpClient := oauth2.NewClient(ctx, src)
 	client, err := github.NewClient(github.WithHTTPClient(httpClient))
 	if err != nil {
-		return "", fmt.Errorf("github.NewClient: %w", err)
+		return TokenDiagnostics{}, fmt.Errorf("github.NewClient: %w", err)
 	}
-	user, _, err := client.Users.Get(ctx, "")
+	return getTokenDiagnostics(ctx, client)
+}
+
+func getTokenDiagnostics(ctx context.Context, client *github.Client) (TokenDiagnostics, error) {
+	user, resp, err := client.Users.Get(ctx, "")
 	if err != nil {
-		return "", err
+		return TokenDiagnostics{}, err
 	}
 	login := user.GetLogin()
 	if login == "" {
-		return "", errors.New("empty login returned from GitHub API")
+		return TokenDiagnostics{}, errors.New("empty login returned from GitHub API")
 	}
-	return login, nil
+	var scopes []string
+	if resp != nil && resp.Response != nil {
+		if raw := resp.Response.Header.Get("X-OAuth-Scopes"); raw != "" {
+			for _, s := range strings.Split(raw, ",") {
+				if s = strings.TrimSpace(s); s != "" {
+					scopes = append(scopes, s)
+				}
+			}
+		}
+	}
+	return TokenDiagnostics{Login: login, Scopes: scopes}, nil
 }
