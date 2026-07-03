@@ -19,6 +19,10 @@
 
 - `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — thread-owl reviewed-side cycle 用の新 skill を追加。ページネーション付き GraphQL でレビュースレッドを取得し、分類・修正・返信・resolve を行い、再レビューが必要な場合は `@thread-owl re-review requested` コメントを投稿して cycle を完了する。次の reviewer-side cycle は thread-owl webhook が起動する。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 
+### 修正
+
+- `ClassifyGitHubError` が GitHub GraphQL の `"Resource not accessible by integration"` メッセージ(GitHub App installation token に必要なリポジトリ権限がない場合、HTTP 200 とともに返される)を認識し、生の Go エラー文字列を MCP tool 呼び出し元に漏らす代わりに `PERMISSION_DENIED` として分類するようにしました。[Issue #89](https://github.com/scottlz0310/review-raven/issues/89) の調査中に発見。([Issue #92](https://github.com/scottlz0310/review-raven/issues/92))
+
 ### 変更
 
 - `docs/skills/thread-owl-review-cycle.ja.md` / `.md` — PR HEAD 同期ゲートを追加し、未 push の状態で返信・resolve・再レビュー依頼へ進むのを防止するようにしました。また、再レビュー依頼のアノテーションやサマリコメントに `expected_head` を記録するようにし、Phase 8 のマージ条件に PR HEAD SHA の照合ゲート（不一致時は `APPROVED_HEAD_MISMATCH` として停止）を追加しました。([Issue #84](https://github.com/scottlz0310/review-raven/issues/84))

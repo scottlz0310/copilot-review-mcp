@@ -113,7 +113,11 @@ func ClassifyGitHubError(err error) *autherr.AuthError {
 	switch {
 	case strings.Contains(msg, "401 Unauthorized"):
 		return autherr.NewReauthRequired()
-	case strings.Contains(msg, "403 Forbidden"):
+	case strings.Contains(msg, "403 Forbidden"),
+		strings.Contains(msg, "Resource not accessible by integration"):
+		// GitHub GraphQL API returns HTTP 200 with this message (not "403
+		// Forbidden") when a GitHub App installation token lacks the
+		// required repository permission (review-raven#92).
 		return autherr.NewPermissionDenied()
 	case strings.Contains(msg, "404 Not Found"):
 		return autherr.NewNotFound()
