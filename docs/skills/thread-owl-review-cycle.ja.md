@@ -249,12 +249,12 @@ Issue 作成・リンクが不可能な場合を除き常に resolve します�
 
 **ステップ 2**: `need_re_review` を判断（未解決 = 0 の場合のみ）:
 
-| fix_type | blocking accept あり? | need_re_review |
-|----------|----------------------|----------------|
-| `none` | — | **no** |
-| `trivial` | — | **no** |
-| `logic` または `spec_change` | いずれの場合も | **yes** |
-| いずれも | 1 件以上 | **yes** |
+| fix_type | need_re_review |
+|----------|----------------|
+| `none`（修正コミットなし・PR HEAD 不変） | **no** |
+| `trivial`・`logic`・`spec_change`（いずれかのコミットあり・PR HEAD 更新） | **yes** |
+
+**`trivial` も再レビュー対象とする理由**: 修正コミットにより PR HEAD が更新されるため、thread-owl 側の既存 Verdict コメント（更新前の HEAD に対するもの）はそのままでは Phase 7 の HEAD 一致検証を満たせなくなる。再レビュー要求を送らずに `need_re_review = no` のまま Phase 6.5 へ進めると、Phase 7 で `AWAITING_THREAD_OWL_VERDICT` として恒久的に停止するデッドロックが発生するため、`trivial` であっても再レビューを要求し、thread-owl に新しい HEAD に対する Verdict コメントを再投稿してもらう。thread-owl 側は新規 `blocking` 指摘が 0 件・全 thread resolved であれば `verdict: approve` 相当として速やかに Verdict コメントを投稿するため、サイクル消費は軽微。
 
 **ステップ 3**: ルーティング
 
@@ -312,6 +312,20 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ## Phase 7: サマリコメント投稿
 
+**thread-owl Verdict コメント確認（サマリ投稿前の必須確認）**:
+
+thread-owl は再レビューの結果、blocking が完全に解消されると新規コメントを投稿せず沈黙する場合があるが、レビュー完了時には必ず固定フォーマットの Verdict コメントを投稿する。サマリ投稿前に以下を確認する。
+
+1. PR のコメント履歴を取得する: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: .user.login, created_at}'`（または `{GH}:add_issue_comment` 用に取得済みの一覧を再利用する）。
+2. 本文に `## @thread-owl Review Verdict: APPROVED` を含む最新のコメントを検索する。
+3. 該当コメントの `Status:` が `READY_TO_MERGE` であることを確認する。
+4. 該当コメントの `Reviewed HEAD SHA:` を抽出し、`gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` で取得した現在の PR HEAD SHA と一致するか確認する。
+5. 次のいずれかに該当する場合、`termination_status = AWAITING_THREAD_OWL_VERDICT` として記録し、その旨をサマリに明記した上で **Phase 8 のマージ判断には進まず、ここで停止・報告する**:
+   - 該当コメントが存在しない
+   - `Status` が `READY_TO_MERGE` ではない
+   - `Reviewed HEAD SHA` が現在の PR HEAD SHA と不一致
+6. 一致を確認できた場合は `thread_owl_verdict_sha` としてその SHA を記録し、通常どおりサマリコメントを作成する。
+
 `{GH}:add_issue_comment` で以下を PR に投稿する:
 
 ```markdown
@@ -331,6 +345,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 ### 検証
 - CI: ...
 - 未解決指摘数: 0
+- thread-owl Verdict: 確認済み (Reviewed HEAD SHA: `<SHA>`) | AWAITING_THREAD_OWL_VERDICT（理由）
 - サイクルステータス: <termination_status>
   - `ESCALATE — Unverified Fix` の場合: 理由・未検証コミット SHA・「マージ前に人間レビュー推奨」を明記
 - 最終サイクル修正タイプ: blocking × N, non-blocking × N, suggestion × N, trivial × N
@@ -352,13 +367,18 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
-- **現在の PR HEAD SHA が、最終レビューで APPROVE された SHA（サマリやレビュー結果に記録された SHA）と一致すること**
-  - 不一致時は `APPROVED_HEAD_MISMATCH` としてマージせず、再レビューへ戻ります。
+- **thread-owl の Verdict コメント（`## @thread-owl Review Verdict: APPROVED` を含み `Status: READY_TO_MERGE`）が存在し、その `Reviewed HEAD SHA` が現在の PR HEAD SHA と一致すること**（Phase 7 で確認済みであること）
+  - 該当コメントが存在しない、または SHA が不一致の場合は `AWAITING_THREAD_OWL_VERDICT` としてマージ判断に進まず、Phase 7 の Verdict コメント確認へ戻ります。
 
 `termination_status = ESCALATE — Unverified Fix` の場合:
 1. CI グリーン・未解決 0 件でも **マージ準備完了とは報告しない**。
 2. 未検証コミット SHA を付けて警告を明確に提示する。
 3. ユーザーがそれでもマージを要求する場合は、未検証 blocking 修正を手動レビュー済みであることを明示的に確認してから進める。
+
+`termination_status = AWAITING_THREAD_OWL_VERDICT`（Verdict コメント未確認・不一致）の場合:
+1. マージ準備完了とは報告しない。
+2. 「thread-owl の Verdict コメントが未確認、または PR HEAD と不一致です。thread-owl 側のレビュー完了を待機してください。」と報告する。
+3. thread-owl から新たな Verdict コメントが投稿され次第、Phase 7 の Verdict コメント確認からやり直す。
 
 `termination_status = WAITING_FOR_REVIEW(thread-owl)`（再レビューコメント投稿済み）の場合:
 1. マージ準備完了とは報告しない。

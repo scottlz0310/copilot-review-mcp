@@ -251,12 +251,12 @@ Do NOT resolve the thread. Record as `untracked — needs follow-up issue` in Ph
 
 **Step 2**: Determine `need_re_review` (only when unresolved = 0):
 
-| fix_type | Accepted `blocking`? | need_re_review |
-|----------|----------------------|----------------|
-| `none` | — | **no** |
-| `trivial` | — | **no** |
-| `logic` or `spec_change` | any | **yes** |
-| any | at least 1 `blocking` | **yes** |
+| fix_type | need_re_review |
+|----------|----------------|
+| `none` (no fix commit — PR HEAD unchanged) | **no** |
+| `trivial`, `logic`, or `spec_change` (any commit — PR HEAD updated) | **yes** |
+
+**Why `trivial` also requires re-review**: A fix commit updates the PR HEAD, so thread-owl's existing Verdict comment (posted against the pre-fix HEAD) can no longer satisfy the Phase 7 HEAD-match check. Skipping re-review (`need_re_review = no`) here would leave Phase 7 permanently stuck at `AWAITING_THREAD_OWL_VERDICT`. So even a `trivial` fix must trigger a re-review request, prompting thread-owl to re-post a Verdict comment against the new HEAD. Since thread-owl posts the Verdict comment promptly whenever new `blocking` feedback is zero and all threads are resolved (`verdict: approve`), this costs only a light extra cycle.
 
 **Step 3**: Route
 
@@ -313,6 +313,20 @@ Check Codecov or similar PR comments if present.
 
 ## Phase 7: Summary Comment
 
+**thread-owl Verdict Comment Check (required before posting the summary)**:
+
+When thread-owl finds zero blocking items remaining after a re-review, it may stay silent (post no new comment). However, upon completing a review it always posts a fixed-format Verdict comment. Verify this before posting the summary.
+
+1. Fetch the PR comment history: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: .user.login, created_at}'` (or reuse the list already fetched for `{GH}:add_issue_comment`).
+2. Find the most recent comment whose body contains `## @thread-owl Review Verdict: APPROVED`.
+3. Verify that comment's `Status:` field is `READY_TO_MERGE`.
+4. Extract that comment's `Reviewed HEAD SHA:` and verify it matches the current PR HEAD SHA obtained via `gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid'`.
+5. If any of the following hold, record `termination_status = AWAITING_THREAD_OWL_VERDICT`, note it in the summary, and **stop here — do not proceed to Phase 8**:
+   - No such comment exists
+   - `Status` is not `READY_TO_MERGE`
+   - `Reviewed HEAD SHA` does not match the current PR HEAD SHA
+6. If verified, record the SHA as `thread_owl_verdict_sha` and proceed to post the summary as usual.
+
 Post via `{GH}:add_issue_comment`:
 
 ```markdown
@@ -332,6 +346,7 @@ Post via `{GH}:add_issue_comment`:
 ### Verification
 - CI: ...
 - Unresolved comments: 0
+- thread-owl Verdict: verified (Reviewed HEAD SHA: `<SHA>`) | AWAITING_THREAD_OWL_VERDICT (reason)
 - Cycle status: <termination_status>
   - On `ESCALATE — Unverified Fix`: reason, unverified commit SHA(s), "Recommendation: human review before merge"
 - Final cycle fix types: blocking × N, non-blocking × N, suggestion × N, trivial × N
@@ -353,13 +368,18 @@ Merge conditions:
 - All threads replied
 - No unresolved `blocking` items
 - `termination_status` is `READY_TO_MERGE` or `ESCALATE — Clean`
-- **The current PR HEAD SHA matches the SHA approved in the latest review (recorded in the summary or review results).**
-  - If they do not match, stop execution as `APPROVED_HEAD_MISMATCH` and do not merge; return to re-review.
+- **A thread-owl Verdict comment (`## @thread-owl Review Verdict: APPROVED` with `Status: READY_TO_MERGE`) exists, and its `Reviewed HEAD SHA` matches the current PR HEAD SHA** (already verified in Phase 7).
+  - If no such comment exists, or the SHA does not match, stop execution as `AWAITING_THREAD_OWL_VERDICT` and do not merge; return to the Phase 7 Verdict comment check.
 
 If `termination_status = ESCALATE — Unverified Fix`:
 1. Do NOT report as ready to merge.
 2. Surface warning with unverified commit SHA(s).
 3. If user still requests merge, confirm they have manually reviewed the unverified blocking fix.
+
+If `termination_status = AWAITING_THREAD_OWL_VERDICT` (Verdict comment missing or mismatched):
+1. Do NOT report as ready to merge.
+2. Report: "thread-owl's Verdict comment is missing or does not match the current PR HEAD. Waiting for thread-owl to complete its review."
+3. Once thread-owl posts a new Verdict comment, redo the Phase 7 Verdict comment check.
 
 If `termination_status = WAITING_FOR_REVIEW(thread-owl)` (re-review comment posted):
 1. Do NOT report as ready to merge.
