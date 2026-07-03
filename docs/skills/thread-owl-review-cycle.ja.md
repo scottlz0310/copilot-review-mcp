@@ -318,7 +318,7 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 thread-owl は再レビューの結果 blocking が完全に解消されると、追加の指摘コメント自体は省略することがあるが、そのレビュー完了時には必ず固定フォーマットの Verdict コメントを投稿する。この確認は `READY_TO_MERGE` 経路でのみ実施する。`ESCALATE — Clean` / `ESCALATE — Unverified Fix` の場合はこの確認を全面的にスキップし（理由は上記「終了分類」表を参照）、そのままサマリ投稿に進む。
 
-1. PR のコメント履歴を取得する: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: .user.login, created_at}'`（または `{GH}:add_issue_comment` 用に取得済みの一覧を再利用する）。
+1. PR のコメント履歴を取得する: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: {login: .user.login}, created_at}'`（または `{GH}:add_issue_comment` 用に取得済みの一覧を再利用する）。`author: {login: ...}` という入れ子構造にしている点に注意する — Phase U2 の GraphQL クエリが使う `author { login }` の形に合わせることで、手順2の `author.login` 判定が実際に成立するようにするため。
 2. 次の両方を満たす最新のコメントを検索する: `author.login` が `thread-owl` または `thread-owl[bot]` であること、かつ本文に `## @thread-owl Review Verdict: APPROVED` を含むこと。それ以外の author によるマッチは破棄する — 無関係なユーザーが同じ文言を投稿してマージゲートを突破する、なりすましを防ぐため。
 3. 該当コメントの `Status:` が `READY_TO_MERGE` であることを確認する。
 4. 該当コメントの `Reviewed HEAD SHA:` を抽出し、`gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` で取得した現在の PR HEAD SHA と一致するか確認する。

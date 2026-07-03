@@ -319,7 +319,7 @@ Check Codecov or similar PR comments if present.
 
 When thread-owl finds zero blocking items remaining after a re-review, it may omit additional inline/summary feedback comments — but it always posts a fixed-format Verdict comment upon completing that review. Verify this before posting the summary, but only on the `READY_TO_MERGE` path; `ESCALATE — Clean` / `ESCALATE — Unverified Fix` skip this check entirely (see the Termination classification table above for why) and go straight to posting the summary.
 
-1. Fetch the PR comment history: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: .user.login, created_at}'` (or reuse the list already fetched for `{GH}:add_issue_comment`).
+1. Fetch the PR comment history: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: {login: .user.login}, created_at}'` (or reuse the list already fetched for `{GH}:add_issue_comment`). Note the nested `author: {login: ...}` shape — matching the `author { login }` shape used by the Phase U2 GraphQL query — so that step 2's `author.login` check below actually resolves.
 2. Find the most recent comment where **both** hold: `author.login` is `thread-owl` or `thread-owl[bot]`, AND the body contains `## @thread-owl Review Verdict: APPROVED`. Discard matches from any other author — this guards against a spoofed comment (matching text posted by an unrelated user) satisfying the merge gate.
 3. Verify that comment's `Status:` field is `READY_TO_MERGE`.
 4. Extract that comment's `Reviewed HEAD SHA:` and verify it matches the current PR HEAD SHA obtained via `gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid'`.
