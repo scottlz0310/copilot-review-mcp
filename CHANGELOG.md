@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — new skill for the thread-owl reviewed-side cycle. Reads review threads via paginated GraphQL, classifies and fixes, replies and resolves, then posts `@thread-owl re-review requested` as the re-review path. The reviewed-side cycle ends there; the next reviewer-side cycle is triggered by thread-owl's webhook. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 
+### Fixed
+
+- `ClassifyGitHubError` now recognizes GitHub GraphQL's `"Resource not accessible by integration"` message (returned with HTTP 200 when a GitHub App installation token lacks the required repository permission) and classifies it as `PERMISSION_DENIED`, instead of leaking the raw Go error string to MCP tool callers. Found while investigating [Issue #89](https://github.com/scottlz0310/review-raven/issues/89). ([Issue #92](https://github.com/scottlz0310/review-raven/issues/92))
+
 ### Changed
 
 - `docs/skills/thread-owl-review-cycle.ja.md` / `.md` — Added a PR HEAD sync gate to prevent proceeding with reply, resolve, and re-review request before local fixes are pushed. Added `expected_head` tracking to re-review request comment annotations and summary comments. Added PR HEAD SHA verification gate to Phase 8 merge conditions (blocks merge with `APPROVED_HEAD_MISMATCH` on mismatch). ([Issue #84](https://github.com/scottlz0310/review-raven/issues/84))

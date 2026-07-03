@@ -133,6 +133,8 @@ func TestClassifyGitHubError_GraphQLStrings(t *testing.T) {
 		{"non-200 OK status code: 502 Bad Gateway body: upstream", autherr.TRANSIENT_UPSTREAM_ERROR},
 		{"non-200 OK status code: 503 Service Unavailable body: down", autherr.TRANSIENT_UPSTREAM_ERROR},
 		{"non-200 OK status code: 504 Gateway Timeout body: slow", autherr.TRANSIENT_UPSTREAM_ERROR},
+		{"Resource not accessible by integration", autherr.PERMISSION_DENIED},
+		{"graphql mutation failed: Resource not accessible by integration", autherr.PERMISSION_DENIED},
 	}
 	for _, tc := range cases {
 		t.Run(tc.msg[:30], func(t *testing.T) {
