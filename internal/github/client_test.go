@@ -661,6 +661,71 @@ func TestGetCIStatus(t *testing.T) {
 	})
 }
 
+func TestGetTokenDiagnostics(t *testing.T) {
+	tests := []struct {
+		name       string
+		scopesHdr  string
+		wantScopes []string
+	}{
+		{
+			name:       "X-OAuth-Scopes header present",
+			scopesHdr:  "repo, user",
+			wantScopes: []string{"repo", "user"},
+		},
+		{
+			name:       "X-OAuth-Scopes header absent (fine-grained PAT / GitHub App token)",
+			scopesHdr:  "",
+			wantScopes: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/user", func(w http.ResponseWriter, _ *http.Request) {
+				if tt.scopesHdr != "" {
+					w.Header().Set("X-OAuth-Scopes", tt.scopesHdr)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, `{"login":"octocat"}`)
+			})
+			c, teardown := newTestGHClient(mux)
+			defer teardown()
+
+			diag, err := getTokenDiagnostics(context.Background(), c.gh)
+			if err != nil {
+				t.Fatalf("getTokenDiagnostics() error = %v", err)
+			}
+			if diag.Login != "octocat" {
+				t.Errorf("Login = %q, want %q", diag.Login, "octocat")
+			}
+			if join(diag.Scopes, ",") != join(tt.wantScopes, ",") {
+				t.Errorf("Scopes = %v, want %v", diag.Scopes, tt.wantScopes)
+			}
+		})
+	}
+
+	t.Run("empty login returns error", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/user", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"login":""}`)
+		})
+		c, teardown := newTestGHClient(mux)
+		defer teardown()
+
+		if _, err := getTokenDiagnostics(context.Background(), c.gh); err == nil {
+			t.Fatal("getTokenDiagnostics() error = nil, want error for empty login")
+		}
+	})
+
+	t.Run("empty token returns error", func(t *testing.T) {
+		if _, err := GetTokenDiagnostics(context.Background(), ""); err == nil {
+			t.Fatal("GetTokenDiagnostics() error = nil, want error for empty token")
+		}
+	})
+}
+
 // join concatenates strings with a separator (avoids importing strings in test file).
 func join(ss []string, sep string) string {
 	if len(ss) == 0 {
