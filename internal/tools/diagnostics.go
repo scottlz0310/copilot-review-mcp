@@ -27,22 +27,31 @@ var diagnoseTokenTool = &mcp.Tool{
 		"トークン生値は返さない。",
 }
 
+// emptyDiagnoseTokenOutput is returned alongside error results. Scopes is an
+// explicit empty slice (not nil) so JSON marshaling produces [] rather than
+// null, matching the tool description's documented output shape.
+var emptyDiagnoseTokenOutput = DiagnoseTokenOutput{Scopes: []string{}}
+
 func diagnoseTokenHandler() func(context.Context, *mcp.CallToolRequest, DiagnoseTokenInput) (*mcp.CallToolResult, DiagnoseTokenOutput, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, _ DiagnoseTokenInput) (*mcp.CallToolResult, DiagnoseTokenOutput, error) {
 		token := tokenFromToolRequest(ctx, req)
 		if token == "" {
-			return authErrResult(autherr.NewAuthRequired()), DiagnoseTokenOutput{}, nil
+			return authErrResult(autherr.NewAuthRequired()), emptyDiagnoseTokenOutput, nil
 		}
 
 		diag, err := ghclient.GetTokenDiagnostics(ctx, token)
 		if err != nil {
 			if result, ok := tryAuthResult(err); ok {
-				return result, DiagnoseTokenOutput{}, nil
+				return result, emptyDiagnoseTokenOutput, nil
 			}
-			return nil, DiagnoseTokenOutput{}, err
+			return nil, emptyDiagnoseTokenOutput, err
 		}
 
-		return nil, DiagnoseTokenOutput{Login: diag.Login, Scopes: diag.Scopes}, nil
+		scopes := diag.Scopes
+		if scopes == nil {
+			scopes = []string{}
+		}
+		return nil, DiagnoseTokenOutput{Login: diag.Login, Scopes: scopes}, nil
 	}
 }
 
