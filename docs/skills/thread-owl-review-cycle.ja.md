@@ -266,9 +266,11 @@ Issue 作成・リンクが不可能な場合を除き常に resolve します�
 
 | 分類 | 条件 | マージへの影響 |
 |------|------|----------------|
-| ✅ `READY_TO_MERGE` | 未解決 = 0、再レビュー不要 | 安全 — 通常のマージゲート |
-| 🟡 `ESCALATE — Clean` | 最大サイクル超過 かつ 最終サイクルの accept に `blocking` なし | おそらく安全 — 未検証の旨を注記 |
-| 🔴 `ESCALATE — Unverified Fix` | 最大サイクル超過 かつ 最終サイクルで `blocking` fix を 1 件以上 accept したが再レビューなし | 危険 — マージ前に人間レビュー推奨 |
+| ✅ `READY_TO_MERGE` | 未解決 = 0、再レビュー不要 | 安全 — 通常のマージゲート。**thread-owl Verdict コメントとの一致が必須**（Phase 7/8 参照） |
+| 🟡 `ESCALATE — Clean` | 最大サイクル超過 かつ 最終サイクルの accept に `blocking` なし | おそらく安全 — 未検証の旨を注記。**Verdict コメント確認は対象外**（Phase 8 参照） |
+| 🔴 `ESCALATE — Unverified Fix` | 最大サイクル超過 かつ 最終サイクルで `blocking` fix を 1 件以上 accept したが再レビューなし | 危険 — マージ前に人間レビュー推奨。**Verdict コメント確認は対象外**（Phase 8 参照） |
+
+**`ESCALATE` で Verdict 確認を対象外とする理由**: 最大サイクルを超過しているため、最終サイクルの修正コミットが thread-owl に再レビューされていない可能性があり、その場合現在の HEAD に対する新しい Verdict コメントは存在し得ない。ここで Verdict 確認を必須にすると恒久的なデッドロックになる。`ESCALATE` は Phase 8 で既に人間による明示的な確認を必須としており、これが自動 Verdict 確認の代替として機能する。
 
 Phase 7 用に記録する: `termination_status`、`final_cycle_fix_types`、`unverified_blocking_commits`。
 
@@ -312,18 +314,15 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ## Phase 7: サマリコメント投稿
 
-**thread-owl Verdict コメント確認（サマリ投稿前の必須確認）**:
+**thread-owl Verdict コメント確認（`termination_status = READY_TO_MERGE` の場合のみ実施。`ESCALATE — *` はスキップ）**:
 
-thread-owl は再レビューの結果、blocking が完全に解消されると新規コメントを投稿せず沈黙する場合があるが、レビュー完了時には必ず固定フォーマットの Verdict コメントを投稿する。サマリ投稿前に以下を確認する。
+thread-owl は再レビューの結果 blocking が完全に解消されると、追加の指摘コメント自体は省略することがあるが、そのレビュー完了時には必ず固定フォーマットの Verdict コメントを投稿する。この確認は `READY_TO_MERGE` 経路でのみ実施する。`ESCALATE — Clean` / `ESCALATE — Unverified Fix` の場合はこの確認を全面的にスキップし（理由は上記「終了分類」表を参照）、そのままサマリ投稿に進む。
 
 1. PR のコメント履歴を取得する: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: .user.login, created_at}'`（または `{GH}:add_issue_comment` 用に取得済みの一覧を再利用する）。
-2. 本文に `## @thread-owl Review Verdict: APPROVED` を含む最新のコメントを検索する。
+2. 次の両方を満たす最新のコメントを検索する: `author.login` が `thread-owl` または `thread-owl[bot]` であること、かつ本文に `## @thread-owl Review Verdict: APPROVED` を含むこと。それ以外の author によるマッチは破棄する — 無関係なユーザーが同じ文言を投稿してマージゲートを突破する、なりすましを防ぐため。
 3. 該当コメントの `Status:` が `READY_TO_MERGE` であることを確認する。
 4. 該当コメントの `Reviewed HEAD SHA:` を抽出し、`gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` で取得した現在の PR HEAD SHA と一致するか確認する。
-5. 次のいずれかに該当する場合、`termination_status = AWAITING_THREAD_OWL_VERDICT` として記録し、その旨をサマリに明記した上で **Phase 8 のマージ判断には進まず、ここで停止・報告する**:
-   - 該当コメントが存在しない
-   - `Status` が `READY_TO_MERGE` ではない
-   - `Reviewed HEAD SHA` が現在の PR HEAD SHA と不一致
+5. 次のいずれかに該当する場合は `termination_status = AWAITING_THREAD_OWL_VERDICT` とする: 該当コメントが存在しない、`Status` が `READY_TO_MERGE` ではない、または `Reviewed HEAD SHA` が現在の PR HEAD SHA と不一致。この場合もサマリコメントは通常どおり投稿し、その旨（ステータス）を明記した上で、**Phase 8 のマージ判断には進まず、ここで停止・報告する**。
 6. 一致を確認できた場合は `thread_owl_verdict_sha` としてその SHA を記録し、通常どおりサマリコメントを作成する。
 
 `{GH}:add_issue_comment` で以下を PR に投稿する:
@@ -367,8 +366,14 @@ thread-owl は再レビューの結果、blocking が完全に解消されると
 - 全スレッドに返信済み
 - 未解決の `blocking` 項目なし
 - `termination_status` が `READY_TO_MERGE` または `ESCALATE — Clean`
-- **thread-owl の Verdict コメント（`## @thread-owl Review Verdict: APPROVED` を含み `Status: READY_TO_MERGE`）が存在し、その `Reviewed HEAD SHA` が現在の PR HEAD SHA と一致すること**（Phase 7 で確認済みであること）
+- **`termination_status = READY_TO_MERGE` の場合**: thread-owl の Verdict コメント（`thread-owl` または `thread-owl[bot]` が投稿した、`## @thread-owl Review Verdict: APPROVED` を含み `Status: READY_TO_MERGE` であるもの）が存在し、その `Reviewed HEAD SHA` が現在の PR HEAD SHA と一致すること（Phase 7 で確認済みであること）。
   - 該当コメントが存在しない、または SHA が不一致の場合は `AWAITING_THREAD_OWL_VERDICT` としてマージ判断に進まず、Phase 7 の Verdict コメント確認へ戻ります。
+- **`termination_status = ESCALATE — Clean` の場合**: Verdict コメント確認は対象外です（最大サイクル超過につき現在の HEAD に対する新しい Verdict が存在し得ないため。Phase U6「終了分類」参照）。マージには下記の `ESCALATE — Clean` 対応に従い、明示的な人間確認が必要です。
+
+`termination_status = ESCALATE — Clean` の場合:
+1. 無条件に「マージ準備完了」とは報告しない。
+2. 最終修正サイクルが thread-owl に再レビューされていない旨（Verdict コメント確認は対象外である旨）を明記する。
+3. ユーザーがそれでもマージを要求する場合は、thread-owl の最終再レビューなしでのマージを許容することを明示的に確認する。
 
 `termination_status = ESCALATE — Unverified Fix` の場合:
 1. CI グリーン・未解決 0 件でも **マージ準備完了とは報告しない**。
