@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: "Copilot review acquisition via async watch polling. Waits for Copilot review completion, then autonomously runs the reviewed-side cycle (fetch threads → classify → fix → reply → re-request Copilot review if needed → post summary). For thread-owl reviewers, use thread-owl-review-cycle instead."
+description: "Copilot review acquisition via async watch polling. Waits for Copilot review completion, then autonomously runs the reviewed-side cycle (fetch threads → classify → fix → reply → re-request Copilot review if needed → post summary). For thread-owl reviewers, use review-raven-thread-owl-cycle instead."
 ---
 
 # pr-review-cycle Skill
@@ -9,7 +9,7 @@ description: "Copilot review acquisition via async watch polling. Waits for Copi
 
 > **Scope: Copilot review only.**
 > This skill is for Copilot review acquisition via async watch polling.
-> For reviews posted by **thread-owl**, use [`thread-owl-review-cycle`](thread-owl-review-cycle.md) instead.
+> For reviews posted by **thread-owl**, use [`review-raven-thread-owl-cycle`](review-raven-thread-owl-cycle.md) instead.
 
 A skill that uses the `review-raven` MCP server's watch tools to wait for **Copilot review** completion via **async watch polling**, then autonomously runs the PR review response cycle. When fixes are required, the next Copilot review is requested directly via `request_copilot_review` — this skill does NOT post `@thread-owl` re-review comments.
 
@@ -410,4 +410,4 @@ If any other condition is not met, report the missing items and await instructio
 
 ## See Also
 
-- [`thread-owl-review-cycle`](thread-owl-review-cycle.md) — For reviews posted by thread-owl. Uses `@thread-owl re-review requested` comment as the re-review path instead of Copilot watch.
+- [`review-raven-thread-owl-cycle`](review-raven-thread-owl-cycle.md) — For reviews posted by thread-owl. Uses `@thread-owl re-review requested` comment as the re-review path instead of Copilot watch.

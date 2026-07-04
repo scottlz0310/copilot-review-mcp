@@ -1,11 +1,11 @@
 ---
-name: thread-owl-review-cycle
+name: review-raven-thread-owl-cycle
 description: "thread-owl レビュー用の reviewed-side cycle スキル。thread-owl のレビュースレッドを読み、分類・修正・返信・resolve を行い、再レビューが必要な場合は @thread-owl re-review requested コメントを投稿して cycle を完了する。thread-owl がレビューを投稿した後（PR に unresolved スレッドが存在する状態）で呼び出す。"
 ---
 
-# thread-owl-review-cycle スキル
+# review-raven-thread-owl-cycle スキル
 
-[English](thread-owl-review-cycle.md)
+[English](review-raven-thread-owl-cycle.md)
 
 > **スコープ: thread-owl レビュー専用。**
 > このスキルは reviewer が **thread-owl** の場合の reviewed-side cycle を担当する。
@@ -16,7 +16,7 @@ thread-owl がレビュアーの場合に reviewed-side cycle を実行するス
 再レビュー依頼は `@thread-owl re-review requested` PR コメントとして投稿する。reviewed-side cycle はそこで完了する。thread-owl は自身の `issue_comment.created` webhook でこのコメントを検知し、`re-review-requested` candidate を enqueue して `queue://review/re-review-requests` の subscriber（reviewer-side）に通知する。次の reviewer-side cycle はこの通知で起動する。
 
 > **このファイルについて**
-> `docs/skills/thread-owl-review-cycle.ja.md` はリポジトリ共有用テンプレートです。
+> `docs/skills/review-raven-thread-owl-cycle.ja.md` はリポジトリ共有用テンプレートです。
 > 個人の AI エージェント設定（`~/.gemini/antigravity-cli/skills/` や `~/.claude/skills/` 等）にコピーしてご利用ください。
 > MCP サーバーキーはお使いの環境に合わせて読み替えてください。
 > 
