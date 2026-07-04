@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: "Copilot review 専用スキル。async watch ポーリングで Copilot レビュー完了を待機し、reviewed-side cycle（スレッド取得→分類→修正→返信→Copilot 再レビュー依頼→サマリ投稿）を自律実行する。thread-owl レビュー用は thread-owl-review-cycle を使うこと。"
+description: "Copilot review 専用スキル。async watch ポーリングで Copilot レビュー完了を待機し、reviewed-side cycle（スレッド取得→分類→修正→返信→Copilot 再レビュー依頼→サマリ投稿）を自律実行する。thread-owl レビュー用は review-raven-thread-owl-cycle を使うこと。"
 ---
 
 # pr-review-cycle スキル
@@ -9,7 +9,7 @@ description: "Copilot review 専用スキル。async watch ポーリングで Co
 
 > **スコープ: Copilot review 専用。**
 > このスキルは Copilot review の async watch ポーリングによる取得を対象とする。
-> **thread-owl** によるレビューには [`thread-owl-review-cycle`](thread-owl-review-cycle.ja.md) を使うこと。
+> **thread-owl** によるレビューには [`review-raven-thread-owl-cycle`](review-raven-thread-owl-cycle.ja.md) を使うこと。
 
 `review-raven` サーバーの watch ツール群を使い、**Copilot review** の完了を **async watch ポーリング**で待機してから PR レビュー対応サイクルを自律実行するスキル。修正が必要な場合は `request_copilot_review` で Copilot に直接再レビューを依頼する。`@thread-owl` 再レビューコメントは投稿しない。
 
@@ -423,4 +423,4 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 ## 関連スキル
 
-- [`thread-owl-review-cycle`](thread-owl-review-cycle.ja.md) — thread-owl レビュー用。再レビュー依頼経路は `@thread-owl` コメント投稿（Copilot watch ループではない）。
+- [`review-raven-thread-owl-cycle`](review-raven-thread-owl-cycle.ja.md) — thread-owl レビュー用。再レビュー依頼経路は `@thread-owl` コメント投稿（Copilot watch ループではない）。

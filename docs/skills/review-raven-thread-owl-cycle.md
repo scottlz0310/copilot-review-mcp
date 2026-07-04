@@ -1,11 +1,11 @@
 ---
-name: thread-owl-review-cycle
+name: review-raven-thread-owl-cycle
 description: "Reviewed-side cycle for thread-owl reviewers. Reads thread-owl review threads, classifies & fixes, replies, resolves, then posts @thread-owl re-review requested when re-review is needed. Invoke when thread-owl has posted a new review (review threads are present in the PR)."
 ---
 
-# thread-owl-review-cycle Skill
+# review-raven-thread-owl-cycle Skill
 
-[日本語](thread-owl-review-cycle.ja.md)
+[日本語](review-raven-thread-owl-cycle.ja.md)
 
 > **Scope: thread-owl reviews only.**
 > This skill handles the reviewed-side cycle when the reviewer is **thread-owl**.
@@ -16,7 +16,7 @@ A skill for the reviewed-side cycle when thread-owl is the reviewer. There is no
 Re-review requests are posted as `@thread-owl re-review requested` PR comments — the reviewed-side cycle ends there. The next reviewer-side cycle is triggered by thread-owl detecting the comment via its `issue_comment.created` webhook, which enqueues a `re-review-requested` candidate and notifies `queue://review/re-review-requests` subscribers (reviewer-side).
 
 > **About this file**
-> `docs/skills/thread-owl-review-cycle.md` is a shared template for this repository.
+> `docs/skills/review-raven-thread-owl-cycle.md` is a shared template for this repository.
 > Copy it to your personal AI agent configuration (e.g. `~/.gemini/antigravity-cli/skills/` or `~/.claude/skills/`) before use.
 > Adapt MCP server keys to match your environment.
 > 
