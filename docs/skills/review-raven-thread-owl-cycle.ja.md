@@ -354,12 +354,13 @@ Codecov 等のカバレッジ PR コメントを確認する（存在しない�
 
 thread-owl は再レビューの結果 blocking が完全に解消されると、追加の指摘コメント自体は省略することがあるが、そのレビュー完了時には必ず固定フォーマットの Verdict コメントを投稿する。この確認は `READY_TO_MERGE` 経路でのみ実施する。`ESCALATE — Clean` / `ESCALATE — Unverified Fix` の場合はこの確認を全面的にスキップし（理由は上記「終了分類」表を参照）、そのままサマリ投稿に進む。
 
-1. PR のコメント履歴を取得する: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, body, author: {login: .user.login}, created_at}'`（または `{GH}:add_issue_comment` 用に取得済みの一覧を再利用する）。`author: {login: ...}` という入れ子構造にしている点に注意する — Phase U2 の GraphQL クエリが使う `author { login }` の形に合わせることで、手順2の `author.login` 判定が実際に成立するようにするため。
-2. 必須コメント投稿者ゲートを再実行してから、次の両方を満たす最新のコメントを検索する: `author.login` が大文字・小文字を区別せず `thread-owl` または `thread-owl[bot]` と一致すること、かつ本文に `## @thread-owl Review Verdict: APPROVED` を含むこと。それ以外の author によるマッチは破棄する — 無関係なユーザーが同じ文言を投稿してマージゲートを突破する、なりすましを防ぐため。
-3. 該当コメントの `Status:` が `READY_TO_MERGE` であることを確認する。
-4. 該当コメントの `Reviewed HEAD SHA:` を抽出し、`gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` で取得した現在の PR HEAD SHA と一致するか確認する。
-5. 次のいずれかに該当する場合は `termination_status = AWAITING_THREAD_OWL_VERDICT` とする: 該当コメントが存在しない、`Status` が `READY_TO_MERGE` ではない、または `Reviewed HEAD SHA` が現在の PR HEAD SHA と不一致。この場合もサマリコメントは通常どおり投稿し、その旨（ステータス）を明記した上で、**Phase 8 のマージ判断には進まず、ここで停止・報告する**。
-6. 一致を確認できた場合は `thread_owl_verdict_sha` としてその SHA を記録し、通常どおりサマリコメントを作成する。
+1. まず PR コメントのメタデータを取得する（本文は含まない）: `gh api repos/<owner>/<repo>/issues/<pr>/comments --paginate --jq '.[] | {id, author: {login: .user.login}, created_at}'`。`author: {login: ...}` という入れ子構造にしている点に注意する — 必須コメント投稿者ゲートの判定が実際に成立するようにするため。
+2. このメタデータ一覧に対して、必須コメント投稿者ゲートを再実行する。いずれかの人間エスカレーションステータスに該当した場合は自動処理を停止する。
+3. ゲート通過後に初めて本文を含むコメント情報を取得し（あるいは該当候補の本文テキストを取得し）、次の両方を満たす最新のコメントを検索する: `author.login` が大文字・小文字を区別せず `thread-owl` または `thread-owl[bot]` と一致すること、かつ本文に `## @thread-owl Review Verdict: APPROVED` を含むこと。それ以外の author によるマッチは破棄する — 無関係なユーザーが同じ文言を投稿してマージゲートを突破する、なりすましを防ぐため。
+4. 該当コメントの `Status:` が `READY_TO_MERGE` であることを確認する。
+5. 該当コメントの `Reviewed HEAD SHA:` を抽出し、`gh pr view <PR番号> --json headRefOid --jq '.headRefOid'` で取得した現在の PR HEAD SHA と一致するか確認する。
+6. 次のいずれかに該当する場合は `termination_status = AWAITING_THREAD_OWL_VERDICT` とする: 該当コメントが存在しない、`Status` が `READY_TO_MERGE` ではない、または `Reviewed HEAD SHA` が現在の PR HEAD SHA と不一致。この場合もサマリコメントは通常どおり投稿し、その旨（ステータス）を明記した上で、**Phase 8 のマージ判断には進まず、ここで停止・報告する**。
+7. 一致を確認できた場合は `thread_owl_verdict_sha` としてその SHA を記録し、通常どおりサマリコメントを作成する。
 
 `{GH}:add_issue_comment` で以下を PR に投稿する:
 
