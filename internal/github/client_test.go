@@ -904,6 +904,13 @@ func TestNewWithHTTPClientAndURLFull(t *testing.T) {
 	}
 }
 
+func TestNewWithHTTPClientAndURLFullInvalidURL(t *testing.T) {
+	_, err := NewWithHTTPClientAndURLFull(http.DefaultClient, "://invalid-url", 30*time.Second)
+	if err == nil {
+		t.Fatal("NewWithHTTPClientAndURLFull() expected error for invalid URL, got nil")
+	}
+}
+
 func TestIsCopilotLoginCoversAllKnownIdentities(t *testing.T) {
 	cases := []struct {
 		login string
