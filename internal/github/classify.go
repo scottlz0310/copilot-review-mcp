@@ -28,6 +28,25 @@ func HTTPStatusError(statusCode int) error {
 	return &github.ErrorResponse{Response: &http.Response{StatusCode: statusCode}}
 }
 
+// NewRateLimitError returns a primary rate-limit error (HTTP 403 + X-RateLimit-Remaining: 0).
+// Intended for tests that need to trigger RATE_LIMITED without importing go-github directly.
+func NewRateLimitError() error {
+	return &github.RateLimitError{
+		Rate:     github.Rate{},
+		Response: &http.Response{StatusCode: http.StatusForbidden},
+		Message:  "API rate limit exceeded",
+	}
+}
+
+// NewAbuseRateLimitError returns a secondary/abuse rate-limit error (HTTP 403 + abuse message).
+// Intended for tests that need to trigger secondary RATE_LIMITED without importing go-github directly.
+func NewAbuseRateLimitError() error {
+	return &github.AbuseRateLimitError{
+		Response: &http.Response{StatusCode: http.StatusForbidden},
+		Message:  "You have exceeded a secondary rate limit",
+	}
+}
+
 // ClassifyGitHubError maps a GitHub API or gateway error to a structured *autherr.AuthError.
 // Returns nil when the error is not a recognized error type (e.g. context.Canceled).
 //

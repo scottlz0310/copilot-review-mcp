@@ -181,6 +181,19 @@ func NewWithHTTPClientAndURL(httpClient *http.Client, baseURL string, threshold 
 	return &Client{gh: gh, threshold: threshold}, nil
 }
 
+// NewWithHTTPClientAndURLFull creates a Client with both REST and GraphQL clients
+// pointing at baseURL, using httpClient for all requests. Intended for tests that
+// need to route both REST and GraphQL calls to an httptest server without importing
+// go-github or githubv4 directly.
+func NewWithHTTPClientAndURLFull(httpClient *http.Client, baseURL string, threshold time.Duration) (*Client, error) {
+	restBase := baseURL + "/"
+	gh, err := github.NewClient(github.WithHTTPClient(httpClient), github.WithURLs(&restBase, &restBase))
+	if err != nil {
+		return nil, fmt.Errorf("github.NewClient: %w", err)
+	}
+	return &Client{gh: gh, v4: githubv4.NewEnterpriseClient(baseURL, httpClient), threshold: threshold}, nil
+}
+
 // GetReviewData fetches raw reviewer and review data for a PR from GitHub.
 func (c *Client) GetReviewData(ctx context.Context, owner, repo string, prNumber int) (*ReviewData, error) {
 	data := &ReviewData{}
