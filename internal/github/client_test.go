@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v89/github"
 	"github.com/shurcooL/githubv4"
 )
 
@@ -872,6 +872,45 @@ func TestGetReviewDataTimelinePicksLatestEvents(t *testing.T) {
 
 // TestIsCopilotLoginCoversAllKnownIdentities verifies that all known Copilot
 // reviewer identities are recognized, including the REST requested_reviewers form.
+func TestNewWithHTTPClientAndURLFull(t *testing.T) {
+	var restHit, gqlHit atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			// GraphQL request
+			gqlHit.Store(true)
+			_, _ = fmt.Fprint(w, `{"data":{}}`)
+		} else {
+			// REST request
+			restHit.Store(true)
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = fmt.Fprint(w, `{"message":"Not Found"}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewWithHTTPClientAndURLFull() error = %v", err)
+	}
+	if c == nil {
+		t.Fatal("NewWithHTTPClientAndURLFull() = nil")
+	}
+	if c.gh == nil {
+		t.Error("REST client (gh) is nil")
+	}
+	if c.v4 == nil {
+		t.Error("GraphQL client (v4) is nil")
+	}
+}
+
+func TestNewWithHTTPClientAndURLFullInvalidURL(t *testing.T) {
+	_, err := NewWithHTTPClientAndURLFull(http.DefaultClient, "://invalid-url", 30*time.Second)
+	if err == nil {
+		t.Fatal("NewWithHTTPClientAndURLFull() expected error for invalid URL, got nil")
+	}
+}
+
 func TestIsCopilotLoginCoversAllKnownIdentities(t *testing.T) {
 	cases := []struct {
 		login string

@@ -12,9 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v88/github"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/shurcooL/githubv4"
 
 	"github.com/scottlz0310/review-raven/internal/autherr"
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
@@ -40,13 +38,11 @@ func new401Server() *httptest.Server {
 
 // make401GitHubClient creates a *ghclient.Client pointing at a server that returns 401.
 func make401GitHubClient(srv *httptest.Server) *ghclient.Client {
-	srvURL := srv.URL + "/"
-	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	c, err := ghclient.NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
 	if err != nil {
 		panic(fmt.Sprintf("make401GitHubClient: %v", err))
 	}
-	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
-	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
+	return c
 }
 
 // decodeAuthError unmarshals the text content of a *mcp.CallToolResult into *autherr.AuthError.
@@ -336,13 +332,11 @@ func newStatusServer(status int) *httptest.Server {
 
 // makeStatusGitHubClient creates a *ghclient.Client pointing at the given server.
 func makeStatusGitHubClient(srv *httptest.Server) *ghclient.Client {
-	srvURL := srv.URL + "/"
-	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	c, err := ghclient.NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
 	if err != nil {
 		panic(fmt.Sprintf("makeStatusGitHubClient: %v", err))
 	}
-	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
-	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
+	return c
 }
 
 // assertBlockingResult checks result is a non-nil error result with the given error type.
@@ -454,20 +448,13 @@ func TestTryAuthResultNewErrorTypes(t *testing.T) {
 		{"TRANSIENT_UPSTREAM_ERROR", autherr.NewTransientUpstreamError(), autherr.TRANSIENT_UPSTREAM_ERROR, true},
 		{
 			"RATE_LIMITED_primary (via RateLimitError)",
-			&github.RateLimitError{
-				Rate:     github.Rate{},
-				Response: &http.Response{StatusCode: http.StatusForbidden},
-				Message:  "rate limit exceeded",
-			},
+			ghclient.NewRateLimitError(),
 			autherr.RATE_LIMITED,
 			true,
 		},
 		{
 			"RATE_LIMITED_secondary (via AbuseRateLimitError)",
-			&github.AbuseRateLimitError{
-				Response: &http.Response{StatusCode: http.StatusForbidden},
-				Message:  "secondary rate limit",
-			},
+			ghclient.NewAbuseRateLimitError(),
 			autherr.RATE_LIMITED,
 			false,
 		},

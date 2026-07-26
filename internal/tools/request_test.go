@@ -11,9 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v88/github"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/shurcooL/githubv4"
 
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/store"
@@ -52,13 +50,11 @@ func newGitHubAPIMock(t *testing.T, submittedAt time.Time) *httptest.Server {
 
 // makeGitHubClient creates a *ghclient.Client that routes all API calls to srv.
 func makeGitHubClient(srv *httptest.Server) *ghclient.Client {
-	srvURL := srv.URL + "/"
-	restClient, err := github.NewClient(github.WithHTTPClient(srv.Client()), github.WithURLs(&srvURL, &srvURL))
+	c, err := ghclient.NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
 	if err != nil {
 		panic(fmt.Sprintf("makeGitHubClient: %v", err))
 	}
-	gqlClient := githubv4.NewEnterpriseClient(srv.URL, srv.Client())
-	return ghclient.NewWithClients(restClient, gqlClient, 30*time.Second)
+	return c
 }
 
 // staticProvider returns a githubClientProvider that always returns the given client.
