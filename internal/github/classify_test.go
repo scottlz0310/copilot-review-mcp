@@ -186,6 +186,46 @@ func TestClassifyGitHubError_UnknownError(t *testing.T) {
 	}
 }
 
+func TestNewRateLimitError(t *testing.T) {
+	err := ghclient.NewRateLimitError()
+	if err == nil {
+		t.Fatal("NewRateLimitError() = nil")
+	}
+	got := ghclient.ClassifyGitHubError(err)
+	if got == nil {
+		t.Fatal("ClassifyGitHubError(NewRateLimitError()) = nil, want RATE_LIMITED")
+	}
+	if got.ErrorType != autherr.RATE_LIMITED {
+		t.Errorf("ErrorType = %q, want %q", got.ErrorType, autherr.RATE_LIMITED)
+	}
+	if !got.Retryable {
+		t.Error("Retryable = false, want true for primary rate limit")
+	}
+	if !ghclient.IsRateLimitHTTPError(err) {
+		t.Error("IsRateLimitHTTPError = false, want true")
+	}
+}
+
+func TestNewAbuseRateLimitError(t *testing.T) {
+	err := ghclient.NewAbuseRateLimitError()
+	if err == nil {
+		t.Fatal("NewAbuseRateLimitError() = nil")
+	}
+	got := ghclient.ClassifyGitHubError(err)
+	if got == nil {
+		t.Fatal("ClassifyGitHubError(NewAbuseRateLimitError()) = nil, want RATE_LIMITED")
+	}
+	if got.ErrorType != autherr.RATE_LIMITED {
+		t.Errorf("ErrorType = %q, want %q", got.ErrorType, autherr.RATE_LIMITED)
+	}
+	if got.Retryable {
+		t.Error("Retryable = true, want false for secondary rate limit")
+	}
+	if !ghclient.IsRateLimitHTTPError(err) {
+		t.Error("IsRateLimitHTTPError = false, want true")
+	}
+}
+
 func TestIsRateLimitHTTPError(t *testing.T) {
 	t.Run("matches typed rate limit errors", func(t *testing.T) {
 		if !ghclient.IsRateLimitHTTPError(&github.RateLimitError{Rate: github.Rate{Remaining: 0}}) {
