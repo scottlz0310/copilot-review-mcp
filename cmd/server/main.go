@@ -38,23 +38,7 @@ func main() {
 
 	slog.Info("auth mode: gateway (trusting X-Authenticated-User header from mcp-gateway)")
 
-	// Resolve default credentials for auth=none fallback (e.g., local development).
-	defaultToken := os.Getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
-	defaultUser := os.Getenv("REVIEW_RAVEN_DEFAULT_USER")
-	if defaultUser == "" && defaultToken != "" {
-		// Try to resolve user login dynamically from GitHub API whoami endpoint.
-		// Use a short timeout so startup is not blocked indefinitely if offline.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if login, err := ghclient.GetAuthenticatedUserLogin(ctx, defaultToken); err == nil {
-			defaultUser = login
-			slog.Info("resolved default user from GitHub API", "login", login)
-		} else {
-			slog.Warn("failed to resolve default user from token", "err", err)
-		}
-		cancel()
-	}
-
-	authMiddleware := middleware.Auth(defaultUser, defaultToken)
+	authMiddleware := middleware.Auth()
 
 	mux := http.NewServeMux()
 
@@ -170,9 +154,8 @@ func loadConfig() config {
 // Endpoint URL and shared secret are validated at startup in loadConfig, so
 // the only failure remaining at watch creation is an empty GitHub login
 // (which would indicate a session-binding bug, not a config error). In that
-// case we log at Error level and fall back to the static token so the watch
-// can still make progress; this preserves availability but is loud enough
-// for ops to detect that Phase B is not actually engaged.
+// case we log at Error level and keep using the request-scoped token supplied
+// by mcp-gateway. No process-wide credential fallback exists.
 func buildGatewayClientFactory(endpointURL, secret string, threshold time.Duration) func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
 	sharedHTTP := &http.Client{Timeout: ghclient.DefaultGatewayTimeout}
 	return func(ctx context.Context, token, login string) watch.ReviewDataFetcher {
@@ -184,7 +167,7 @@ func buildGatewayClientFactory(endpointURL, secret string, threshold time.Durati
 			Context:     ctx,
 		})
 		if err != nil {
-			slog.Error("gateway token source unavailable; phase B disabled for this watch, falling back to static token",
+			slog.Error("gateway token source unavailable; phase B disabled for this watch, using request-scoped token",
 				"login", login, "err", err)
 			return ghclient.NewClient(ctx, token, threshold, nil)
 		}

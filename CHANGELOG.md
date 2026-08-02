@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `spike-request-scoped-reauth.md` / `.ja.md` — spike investigation into frequent `REAUTH_REQUIRED` on request-scoped (non-watch) tool calls such as `get_review_threads`. Root cause: mcp-gateway builtin mode discards the GitHub provider access token at token exchange, so `EnsureFreshAccessTokenForSubject` hands the gateway RS256 JWT to review-raven as the Bearer token and GitHub rejects it with 401 on every call. Fix belongs to mcp-gateway (filed as [mcp-gateway#188](https://github.com/scottlz0310/mcp-gateway/issues/188)); no review-raven code change required. ([Issue #87](https://github.com/scottlz0310/review-raven/issues/87))
 
-- Default credentials and dynamic default user resolution for `auth=none` routes: When `X-Authenticated-User` and `Authorization` headers are missing (such as in `auth=none` proxy routes), the server can fall back to default values. The default user is dynamically resolved by calling GitHub's `GET /user` endpoint using the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable if `REVIEW_RAVEN_DEFAULT_USER` is not explicitly set. ([Issue #80](https://github.com/scottlz0310/review-raven/issues/80))
-
 - `docs/skills/thread-owl-review-cycle.md` / `.ja.md` — new skill for the thread-owl reviewed-side cycle. Reads review threads via paginated GraphQL, classifies and fixes, replies and resolves, then posts `@thread-owl re-review requested` as the re-review path. The reviewed-side cycle ends there; the next reviewer-side cycle is triggered by thread-owl's webhook. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 
 ### Fixed
@@ -36,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge). ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 
 ### Removed
+
+- Removed the process-wide `GITHUB_PERSONAL_ACCESS_TOKEN` / `REVIEW_RAVEN_DEFAULT_USER` fallback. Every GitHub API path now requires the request-scoped identity and Bearer token injected by mcp-gateway and fails closed when either header is missing or malformed. ([Issue #106](https://github.com/scottlz0310/review-raven/issues/106))
 
 - **Legacy `copilot-review://` URI scheme and `COPILOT_REVIEW_*` env vars removed** ([Issue #66](https://github.com/scottlz0310/review-raven/issues/66)):
   - `SubscribeHandler` now returns `ResourceNotFoundError` for `copilot-review://watch/...` URIs instead of silently succeeding (ghost subscriptions). Re-request any active watches.
