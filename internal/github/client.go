@@ -772,16 +772,6 @@ func (c *Client) ResolveThread(ctx context.Context, threadID string) (alreadyRes
 	return false, nil
 }
 
-// GetAuthenticatedUserLogin fetches the login name of the user authenticated by the token.
-// If the token is empty, returns an error.
-func GetAuthenticatedUserLogin(ctx context.Context, token string) (string, error) {
-	diag, err := GetTokenDiagnostics(ctx, token)
-	if err != nil {
-		return "", err
-	}
-	return diag.Login, nil
-}
-
 // TokenDiagnostics holds identity and scope information for a GitHub token,
 // resolved from GET /user. It never carries the token's raw value.
 type TokenDiagnostics struct {
