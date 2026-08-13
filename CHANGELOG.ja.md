@@ -19,6 +19,8 @@
 
 ### 修正
 
+- Docker ビルドで、ベースイメージの更新が `go.mod` の Go toolchain patch version に遅れている場合でも、宣言された Go toolchain を自動取得できるようにしました。
+
 - `ClassifyGitHubError` が GitHub GraphQL の `"Resource not accessible by integration"` メッセージ(GitHub App installation token に必要なリポジトリ権限がない場合、HTTP 200 とともに返される)を認識し、生の Go エラー文字列を MCP tool 呼び出し元に漏らす代わりに `PERMISSION_DENIED` として分類するようにしました。[Issue #89](https://github.com/scottlz0310/review-raven/issues/89) の調査中に発見。([Issue #92](https://github.com/scottlz0310/review-raven/issues/92))
 
 ### 変更

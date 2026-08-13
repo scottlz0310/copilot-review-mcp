@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM golang:1.26-alpine AS builder
+# 公式イメージの Go が go.mod の patch version に追随するまで自動取得を許可
+ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
