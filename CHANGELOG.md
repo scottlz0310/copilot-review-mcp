@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Docker builds now automatically obtain the Go toolchain patch version declared by `go.mod` when the base image has not caught up yet.
+
 - `ClassifyGitHubError` now recognizes GitHub GraphQL's `"Resource not accessible by integration"` message (returned with HTTP 200 when a GitHub App installation token lacks the required repository permission) and classifies it as `PERMISSION_DENIED`, instead of leaking the raw Go error string to MCP tool callers. Found while investigating [Issue #89](https://github.com/scottlz0310/review-raven/issues/89). ([Issue #92](https://github.com/scottlz0310/review-raven/issues/92))
 
 ### Changed
