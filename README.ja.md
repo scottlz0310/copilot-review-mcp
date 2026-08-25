@@ -16,7 +16,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 - **GraphQL ベースの Copilot review request**。REST `requested_reviewers` が bot actor を黙って無視する問題を回避する
 - **PR レビュースレッド単位の操作**。`PRRT_xxx` ノード ID で reply / resolve / reply+resolve を行う
 - **mcp-gateway** による認証。ゲートウェイが OAuth を処理し、検証済みの identity ヘッダーを注入する
-- **Stateful session**。`Mcp-Session-Id` を GitHub login にバインドし、idle timeout で自動 prune
+- **Stateless Streamable HTTP**（MCP protocol `2026-07-28`）。`Mcp-Session-Id` は発行も参照もせず、各リクエストは mcp-gateway が注入する GitHub token で個別に認可する
 - **SQLite による watch state 永続化**。プロセス再起動後の active watch は `STALE` として観測できる
 
 ## 提供ツール

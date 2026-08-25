@@ -16,7 +16,7 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 - **GraphQL-based Copilot review request**. Avoids the issue where REST `requested_reviewers` silently ignores bot actors.
 - **Per-thread review operations**. Reply, resolve, or reply+resolve individual threads using `PRRT_xxx` node IDs.
 - **mcp-gateway integration** for authentication. The gateway handles OAuth and injects verified identity headers.
-- **Stateful sessions**. `Mcp-Session-Id` is bound to a GitHub login; sessions are automatically pruned on idle timeout.
+- **Stateless Streamable HTTP** on MCP protocol `2026-07-28`. No `Mcp-Session-Id` is issued or read; every request is authorized on its own from the GitHub token injected by mcp-gateway.
 - **SQLite-persisted watch state**. Active watches that survive a process restart are observable as `STALE`.
 
 ## Tools

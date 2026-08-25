@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -19,9 +21,22 @@ import (
 	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
-// testMcpSessionIDHeader mirrors the SDK's session header name for tests that
-// need to assert on its (non-)presence in stateless mode.
-const testMcpSessionIDHeader = "Mcp-Session-Id"
+const (
+	// testMcpSessionIDHeader mirrors the SDK's session header name for tests
+	// that need to assert on its (non-)presence in stateless mode.
+	testMcpSessionIDHeader = "Mcp-Session-Id"
+
+	// testProtocolVersion20260728 is the protocol revision this server adopts.
+	// go-sdk negotiates it on Streamable HTTP only when Stateless is true.
+	testProtocolVersion20260728 = "2026-07-28"
+
+	// testNewProtocolMeta is the per-request _meta block that SEP-2575 requires
+	// on every 2026-07-28 request, replacing the initialize handshake.
+	testNewProtocolMeta = `"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"` + testProtocolVersion20260728 + `",` +
+		`"io.modelcontextprotocol/clientCapabilities":{},` +
+		`"io.modelcontextprotocol/clientInfo":{"name":"test-client","version":"1.0.0"}}`
+)
 
 func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "server-test.db"))
@@ -50,11 +65,14 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 	}
 }
 
-// TestStreamableHandlerStatelessDoesNotIssueSessionID is a regression test for
-// MCP 2026-07-28 stateless negotiation: go-sdk only accepts the new protocol
-// version on Streamable HTTP when Stateless is true, and a stateless server
-// must not mint or echo Mcp-Session-Id.
-func TestStreamableHandlerStatelessDoesNotIssueSessionID(t *testing.T) {
+// TestStreamableHandlerNegotiates20260728 is the primary contract test for the
+// adopted protocol. Connecting a real SDK client exercises the discovery-first
+// handshake (server/discover, not the legacy initialize), and the negotiated
+// version must be 2026-07-28 — go-sdk downgrades a stateful server to
+// 2025-11-25, so this assertion is what actually pins Stateless: true.
+// Representative tool and resource requests then confirm the registered
+// surface is reachable over the negotiated protocol.
+func TestStreamableHandlerNegotiates20260728(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
@@ -64,22 +82,40 @@ func TestStreamableHandlerStatelessDoesNotIssueSessionID(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	initBody := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}`)
-	resp := postMCP(t, httpServer.URL, "token-a", "", initBody)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("initialize status = %d, want 200; body=%s", resp.StatusCode, string(body))
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint:             httpServer.URL,
+		HTTPClient:           bearerTokenHTTPClient("token-a"),
+		DisableStandaloneSSE: true,
+		MaxRetries:           -1,
+	}, nil)
+	if err != nil {
+		t.Fatalf("client.Connect() error = %v", err)
 	}
-	if sid := resp.Header.Get(testMcpSessionIDHeader); sid != "" {
-		t.Fatalf("initialize response Mcp-Session-Id = %q, want empty in stateless mode", sid)
+	t.Cleanup(func() { _ = session.Close() })
+
+	if got := session.InitializeResult().ProtocolVersion; got != testProtocolVersion20260728 {
+		t.Fatalf("negotiated protocol version = %q, want %q (a stateful server would fall back to 2025-11-25)",
+			got, testProtocolVersion20260728)
+	}
+
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() over %s error = %v", testProtocolVersion20260728, err)
+	}
+	if len(tools.Tools) == 0 {
+		t.Fatal("ListTools() returned no tools; the registered tool surface is unreachable over the new protocol")
+	}
+	if _, err := session.ListResources(context.Background(), nil); err != nil {
+		t.Fatalf("ListResources() over %s error = %v", testProtocolVersion20260728, err)
 	}
 }
 
-// TestStreamableHandlerStatelessRejectsGet confirms Stateless: true is wired
-// through to the SDK handler: per spec, stateless servers reject standalone
-// GET (and DELETE) with 405 rather than opening a session-bound SSE stream.
-func TestStreamableHandlerStatelessRejectsGet(t *testing.T) {
+// TestStreamableHandlerServerDiscoverIsStateless pins the wire-level contract
+// of the discovery RPC that replaces initialize: it must succeed, advertise
+// 2026-07-28, and must not mint an Mcp-Session-Id (mcp-gateway relies on the
+// absence of session affinity — see mcp-gateway docs/mcp-protocol-transparency.md).
+func TestStreamableHandlerServerDiscoverIsStateless(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
@@ -89,19 +125,125 @@ func TestStreamableHandlerStatelessRejectsGet(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	req, err := http.NewRequest(http.MethodGet, httpServer.URL, nil)
-	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer token-a")
-	req.Header.Set("Accept", "text/event-stream")
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` + testNewProtocolMeta + `}}`)
+	req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "server/discover", body)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("http.Do() error = %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("GET status = %d, want 405 (stateless servers reject standalone GET)", resp.StatusCode)
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("server/discover status = %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+	if sid := resp.Header.Get(testMcpSessionIDHeader); sid != "" {
+		t.Fatalf("server/discover response %s = %q, want empty in stateless mode", testMcpSessionIDHeader, sid)
+	}
+	if !strings.Contains(string(respBody), testProtocolVersion20260728) {
+		t.Fatalf("server/discover response does not advertise %s: %s", testProtocolVersion20260728, respBody)
+	}
+}
+
+// TestStreamableHandlerSubscriptionsListenAcknowledges covers the happy path of
+// the RPC that replaced resources/subscribe and the standalone GET stream.
+// Per spec the server MUST send notifications/subscriptions/acknowledged as the
+// first message on the long-lived stream, carrying the listen request's JSON-RPC
+// ID as io.modelcontextprotocol/subscriptionId so clients can demultiplex.
+func TestStreamableHandlerSubscriptionsListenAcknowledges(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	// The stream stays open until the client goes away, so cancel the request
+	// context once the acknowledgement has been observed.
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	body := []byte(`{"jsonrpc":"2.0","id":7,"method":"subscriptions/listen","params":{` +
+		testNewProtocolMeta + `,"notifications":{"toolsListChanged":true}}}`)
+	req := newProtocolRequest(t, ctx, httpServer.URL, "token-a", "subscriptions/listen", body)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("subscriptions/listen status = %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("subscriptions/listen Content-Type = %q, want text/event-stream (long-lived stream)", ct)
+	}
+
+	ack := readFirstSSEData(t, resp.Body)
+	var decoded struct {
+		Method string `json:"method"`
+		Params struct {
+			Meta map[string]any `json:"_meta"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(ack, &decoded); err != nil {
+		t.Fatalf("decode first stream message error = %v; raw=%s", err, ack)
+	}
+	if decoded.Method != "notifications/subscriptions/acknowledged" {
+		t.Fatalf("first stream message method = %q, want notifications/subscriptions/acknowledged; raw=%s",
+			decoded.Method, ack)
+	}
+	if _, ok := decoded.Params.Meta["io.modelcontextprotocol/subscriptionId"]; !ok {
+		t.Fatalf("acknowledgement is missing io.modelcontextprotocol/subscriptionId; raw=%s", ack)
+	}
+}
+
+// TestStreamableHandlerStatelessRejects405Methods confirms Stateless: true is
+// wired through to the SDK handler. Per spec a stateless server has no
+// standalone GET stream to open and no session to tear down via DELETE, so both
+// must return 405 — mcp-gateway forwards this status verbatim.
+func TestStreamableHandlerStatelessRejects405Methods(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	tests := []struct {
+		name   string
+		method string
+		accept string
+	}{
+		{name: "standalone GET stream", method: http.MethodGet, accept: "text/event-stream"},
+		{name: "session teardown DELETE", method: http.MethodDelete, accept: "application/json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, httpServer.URL, nil)
+			if err != nil {
+				t.Fatalf("http.NewRequest() error = %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer token-a")
+			req.Header.Set("Accept", tt.accept)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("http.Do() error = %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Fatalf("%s status = %d, want 405 in stateless mode", tt.method, resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -143,24 +285,60 @@ func withAuthContext(next http.Handler, tokenLogins map[string]string) http.Hand
 	})
 }
 
-func postMCP(t *testing.T, endpoint, token, sessionID string, body []byte) *http.Response {
+// newProtocolRequest builds a raw JSON-RPC request carrying everything protocol
+// 2026-07-28 requires on the wire: the SEP-2243 standard headers (Mcp-Method,
+// Mcp-Protocol-Version) alongside the usual Accept/Content-Type. The SDK
+// rejects requests whose headers and body disagree, so rpcMethod must match the
+// method in body.
+func newProtocolRequest(t *testing.T, ctx context.Context, endpoint, token, rpcMethod string, body []byte) *http.Request {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Content-Type", "application/json")
-	if sessionID != "" {
-		req.Header.Set(testMcpSessionIDHeader, sessionID)
+	req.Header.Set("Mcp-Protocol-Version", testProtocolVersion20260728)
+	req.Header.Set("Mcp-Method", rpcMethod)
+	return req
+}
+
+// readFirstSSEData returns the payload of the first `data:` line on an SSE
+// stream, skipping event/id fields and keep-alive comment lines.
+func readFirstSSEData(t *testing.T, r io.Reader) []byte {
+	t.Helper()
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if data, ok := strings.CutPrefix(line, "data:"); ok {
+			return []byte(strings.TrimSpace(data))
+		}
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("http.Do() error = %v", err)
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("reading SSE stream error = %v", err)
 	}
-	return resp
+	t.Fatal("SSE stream closed before any data line was received")
+	return nil
+}
+
+func bearerTokenHTTPClient(token string) *http.Client {
+	return &http.Client{
+		Transport: bearerTokenRoundTripper{token: token, base: http.DefaultTransport},
+	}
+}
+
+type bearerTokenRoundTripper struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (rt bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Authorization", "Bearer "+rt.token)
+	return rt.base.RoundTrip(req)
 }
 
 // TestSubscribeHandlerRejectsLegacyURIScheme is a regression test for the ghost
@@ -187,16 +365,9 @@ func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test-client","version":"1.0.0"}},"notifications":{"resourceSubscriptions":["copilot-review://watch/abc123"]}}}`)
-	req, err := http.NewRequest(http.MethodPost, httpServer.URL, bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer token-a")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
-	req.Header.Set("Mcp-Method", "subscriptions/listen")
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{` +
+		testNewProtocolMeta + `,"notifications":{"resourceSubscriptions":["copilot-review://watch/abc123"]}}}`)
+	req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "subscriptions/listen", body)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("http.Do() error = %v", err)
