@@ -113,15 +113,14 @@ func writeUnsupportedProtocolVersion(w http.ResponseWriter, id jsonrpc.ID, reque
 	if requested != "" {
 		message += ": " + requested
 	}
-	data, err := json.Marshal(mcp.UnsupportedProtocolVersionData{
+	// Every value on this response is a fixed-shape string, so neither marshal
+	// step has a failure mode to handle. go-sdk drops the same error for the
+	// same reason where it builds this error itself.
+	data, _ := json.Marshal(mcp.UnsupportedProtocolVersionData{
 		Supported: []string{protocolVersion20260728},
 		Requested: requested,
 	})
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	body, err := jsonrpc.EncodeMessage(&jsonrpc.Response{
+	body, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{
 		ID: id,
 		Error: &jsonrpc.Error{
 			Code:    mcp.CodeUnsupportedProtocolVersion,
@@ -129,10 +128,6 @@ func writeUnsupportedProtocolVersion(w http.ResponseWriter, id jsonrpc.ID, reque
 			Data:    data,
 		},
 	})
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)

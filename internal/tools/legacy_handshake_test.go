@@ -105,6 +105,97 @@ func TestStreamableHandlerRejectsLegacyInitialize(t *testing.T) {
 	}
 }
 
+// TestStreamableHandlerForwardsUnclassifiableBodies covers the cases the gate
+// deliberately does not answer itself. A body it cannot parse, or one larger
+// than the SDK's own request limit, belongs to the SDK — the peek must hand it
+// on rather than guess at a rejection. What matters is that none of these come
+// back as our -32022; the SDK owns whatever status they do get.
+func TestStreamableHandlerForwardsUnclassifiableBodies(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	legacyInitialize := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{` +
+		`"protocolVersion":"2025-06-18","capabilities":{},` +
+		`"clientInfo":{"name":"legacy-client","version":"1.0.0"}}}`
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "empty body", body: ""},
+		{name: "not JSON at all", body: "not json"},
+		{name: "unterminated batch", body: `[{"jsonrpc":"2.0","id":1,`},
+		{
+			// Padding past mcp.DefaultMaxRequestBodyBytes: the peek stops at the
+			// limit, so the handshake inside is never classified and the SDK
+			// rejects the request on size instead.
+			name: "handshake past the SDK request size limit",
+			body: legacyInitialize + strings.Repeat(" ", mcp.DefaultMaxRequestBodyBytes),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newLegacyRequest(t, httpServer.URL, "token-a", tt.body)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("http.Do() error = %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read response body error = %v", err)
+			}
+			if strings.Contains(string(respBody), "unsupported protocol version") {
+				t.Fatalf("gate answered a body it must not classify (status %d): %s", resp.StatusCode, respBody)
+			}
+		})
+	}
+}
+
+// TestStreamableHandlerRejectsLegacyInitializeAmongUndecodableBatchEntries
+// pins that an entry the JSON-RPC decoder rejects does not shadow a handshake
+// later in the same batch.
+func TestStreamableHandlerRejectsLegacyInitializeAmongUndecodableBatchEntries(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	body := `[{"not":"a jsonrpc message"},` +
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{` +
+		`"protocolVersion":"2025-06-18","capabilities":{},` +
+		`"clientInfo":{"name":"legacy-client","version":"1.0.0"}}}]`
+	req := newLegacyRequest(t, httpServer.URL, "token-a", body)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body error = %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("batched initialize status = %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+	if !strings.Contains(string(respBody), "unsupported protocol version") {
+		t.Fatalf("batched initialize response = %s, want the -32022 rejection", respBody)
+	}
+}
+
 // TestStreamableHandlerForwardsNonInitializeBodies guards the gate against
 // over-reach: it must hand the body on untouched, so a modern request still
 // reaches the SDK handler after the peek.
