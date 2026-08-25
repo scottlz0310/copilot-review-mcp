@@ -83,7 +83,6 @@ BIND_ADDR=127.0.0.1   # Docker で別コンテナ（mcp-gateway 等）から到�
 LOG_LEVEL=info
 SQLITE_PATH=/data/review-raven.db
 IN_PROGRESS_THRESHOLD_SEC=30
-MCP_SESSION_TIMEOUT_MIN=0
 ```
 
 ### health check

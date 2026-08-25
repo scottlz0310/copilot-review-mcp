@@ -2,13 +2,10 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,43 +19,6 @@ import (
 
 var schemaCache = mcp.NewSchemaCache()
 
-const (
-	// defaultStreamableSessionTimeout = 0 means the SDK does not evict idle
-	// sessions. This avoids the `session not found` failure reported in #14
-	// when a client or upstream proxy keeps a Mcp-Session-Id across long
-	// idle periods. Operators who need eviction can set MCP_SESSION_TIMEOUT_MIN
-	// to a positive value; see README for the memory-growth trade-off when
-	// clients disappear without sending DELETE.
-	defaultStreamableSessionTimeout = time.Duration(0)
-	defaultSessionPruneInterval     = 5 * time.Minute
-	mcpSessionIDHeader              = "Mcp-Session-Id"
-	sessionUserMismatchError        = "session_user_mismatch"
-	sessionTimeoutEnv               = "MCP_SESSION_TIMEOUT_MIN"
-	// maxSessionTimeoutMinutes is the largest minute value that fits in a
-	// time.Duration (int64 nanoseconds). Larger inputs would overflow and wrap
-	// to a negative/garbled duration, so we treat them as invalid.
-	maxSessionTimeoutMinutes = math.MaxInt64 / int64(time.Minute)
-)
-
-// resolveStreamableSessionTimeout returns the idle timeout used for Streamable
-// HTTP sessions. The value is read from MCP_SESSION_TIMEOUT_MIN (minutes);
-// a value of 0 disables idle eviction (SDK semantics: idle sessions are never
-// closed). Negative, overflowing, or unparseable values fall back to the default.
-func resolveStreamableSessionTimeout(getenv func(string) string) time.Duration {
-	raw := strings.TrimSpace(getenv(sessionTimeoutEnv))
-	if raw == "" {
-		return defaultStreamableSessionTimeout
-	}
-	n, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || n < 0 || n > maxSessionTimeoutMinutes {
-		slog.Warn("invalid MCP_SESSION_TIMEOUT_MIN; falling back to default",
-			"value", raw,
-			"default_minutes", int(defaultStreamableSessionTimeout/time.Minute))
-		return defaultStreamableSessionTimeout
-	}
-	return time.Duration(n) * time.Minute
-}
-
 // TokenInvalidator is not supported — standalone OAuth was removed in the pre-rename copilot-review-mcp lineage.
 
 // StreamableHandler serves MCP over Streamable HTTP and owns shared background state.
@@ -67,102 +27,12 @@ type StreamableHandler struct {
 	watchManager *watch.Manager
 	server       *mcp.Server
 
-	// sessionTimeout is the resolved idle timeout passed to the SDK at handler
-	// construction. Exposed so tests can verify env propagation from
-	// MCP_SESSION_TIMEOUT_MIN through BuildStreamableHandler.
-	sessionTimeout time.Duration
-
-	mu sync.Mutex
-
-	sessionLogins map[string]string
-	stopPruner    chan struct{}
-	closeOnce     sync.Once
-}
-
-// sessionRecorder wraps http.ResponseWriter and calls rememberSession at the
-// moment the SDK first commits response headers (WriteHeader, Write, or Flush),
-// ensuring the session is registered before any bytes reach the client. This
-// closes the race where a client reads the Mcp-Session-Id from the response
-// and immediately sends a follow-up request before ServeHTTP returns.
-//
-// Unwrap allows http.ResponseController and other middleware to traverse the
-// wrapper chain and access optional interfaces (e.g., http.Hijacker, write
-// deadlines) on the original ResponseWriter.
-type sessionRecorder struct {
-	http.ResponseWriter
-	login   string
-	handler *StreamableHandler
-	once    sync.Once
-}
-
-// Unwrap returns the underlying http.ResponseWriter, enabling
-// http.ResponseController to reach optional interfaces on the original writer.
-func (sr *sessionRecorder) Unwrap() http.ResponseWriter {
-	return sr.ResponseWriter
-}
-
-// captureSession reads Mcp-Session-Id from the response headers and calls
-// rememberSession. It is invoked via once.Do so it runs at most once per request.
-func (sr *sessionRecorder) captureSession() {
-	if sid := sr.Header().Get(mcpSessionIDHeader); sid != "" && sr.login != "" {
-		sr.handler.rememberSession(sid, sr.login)
-	}
-}
-
-func (sr *sessionRecorder) WriteHeader(code int) {
-	sr.once.Do(sr.captureSession)
-	sr.ResponseWriter.WriteHeader(code)
-}
-
-func (sr *sessionRecorder) Write(b []byte) (int, error) {
-	sr.once.Do(sr.captureSession)
-	return sr.ResponseWriter.Write(b)
-}
-
-// sessionRecorderFlusher wraps sessionRecorder and conditionally adds
-// http.Flusher. It is used only when the underlying ResponseWriter itself
-// implements http.Flusher, preserving the optional-interface contract:
-// handlers that check for Flusher support via type-assertion see the same
-// capability as the original writer.
-type sessionRecorderFlusher struct {
-	*sessionRecorder
-	flusher http.Flusher
-}
-
-// Flush calls captureSession (via once.Do) before forwarding to the
-// underlying http.Flusher so SSE events are pushed immediately and the
-// session is registered even when the SDK flushes before Write/WriteHeader.
-func (srf *sessionRecorderFlusher) Flush() {
-	srf.once.Do(srf.captureSession)
-	srf.flusher.Flush()
+	closeOnce sync.Once
 }
 
 // ServeHTTP proxies requests to the underlying MCP streamable handler.
 func (h *StreamableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	login := middleware.LoginFromContext(r.Context())
-	sessionID := r.Header.Get(mcpSessionIDHeader)
-	if sessionID != "" && login != "" && !h.authorizeSession(sessionID, login) {
-		writeJSONError(w, http.StatusForbidden, sessionUserMismatchError)
-		return
-	}
-
-	sr := &sessionRecorder{ResponseWriter: w, login: login, handler: h}
-	// Only advertise http.Flusher when the original writer supports it, to
-	// preserve the optional-interface contract for handlers that type-assert
-	// for Flusher (e.g., SSE/MCP streaming).
-	var rw http.ResponseWriter = sr
-	if f, ok := w.(http.Flusher); ok {
-		rw = &sessionRecorderFlusher{sessionRecorder: sr, flusher: f}
-	}
-	h.handler.ServeHTTP(rw, r)
-	// Fallback for implicit header commits: net/http writes headers on handler
-	// return if the handler never called Write, WriteHeader, or Flush. The
-	// once.Do is a no-op when captureSession already ran inside ServeHTTP.
-	sr.once.Do(sr.captureSession)
-
-	if r.Method == http.MethodDelete && sessionID != "" {
-		h.forgetSession(sessionID)
-	}
+	h.handler.ServeHTTP(w, r)
 }
 
 // Close stops background review watches owned by this handler.
@@ -172,17 +42,8 @@ func (h *StreamableHandler) Close() {
 	}
 
 	h.closeOnce.Do(func() {
-		if h.stopPruner != nil {
-			close(h.stopPruner)
-		}
-
-		h.mu.Lock()
-		server := h.server
-		h.sessionLogins = make(map[string]string)
-		h.mu.Unlock()
-
-		if server != nil {
-			for session := range server.Sessions() {
+		if h.server != nil {
+			for session := range h.server.Sessions() {
 				sessionID := session.ID()
 				if err := session.Close(); err != nil {
 					slog.Warn("failed to close MCP session", "session_id", sessionID, "err", err)
@@ -205,10 +66,9 @@ type BuilderOptions struct {
 	GatewayClientFactory func(ctx context.Context, token, login string) watch.ReviewDataFetcher
 }
 
-// BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP.
-// getServer is called for new stateful MCP sessions and returns the shared
-// long-lived *mcp.Server. GitHub clients are created per tool call from the
-// authenticated request headers.
+// BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP
+// in stateless mode (per-request temporary sessions, no Mcp-Session-Id). GitHub
+// clients are created per tool call from the authenticated request headers.
 func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHandler {
 	return BuildStreamableHandlerWithOptions(db, threshold, BuilderOptions{})
 }
@@ -278,20 +138,9 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	RegisterCycleTool(srv, clientProvider, db)
 	RegisterDiagnoseTokenTool(srv)
 
-	sessionTimeout := resolveStreamableSessionTimeout(os.Getenv)
-	if sessionTimeout == 0 {
-		slog.Warn("streamable HTTP session idle timeout disabled — SDK will never prune idle sessions; ensure clients send DELETE on shutdown or memory will grow unbounded")
-	} else {
-		slog.Info("streamable HTTP session idle timeout configured",
-			"minutes", int(sessionTimeout/time.Minute))
-	}
-
 	streamableHandler := &StreamableHandler{
-		watchManager:   watchManager,
-		server:         srv,
-		sessionTimeout: sessionTimeout,
-		sessionLogins:  make(map[string]string),
-		stopPruner:     make(chan struct{}),
+		watchManager: watchManager,
+		server:       srv,
 	}
 
 	getServer := func(r *http.Request) *mcp.Server {
@@ -301,77 +150,15 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		return srv
 	}
 	streamableHandler.handler = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
-		EventStore:     mcp.NewMemoryEventStore(nil),
-		SessionTimeout: sessionTimeout,
+		// Stateless is required for MCP 2026-07-28 negotiation: go-sdk only
+		// accepts the new protocol version on the Streamable HTTP transport when
+		// Stateless is true (stateful servers negotiate down to 2025-11-25).
+		// It also removes the session-hijacking attack surface entirely — with
+		// no Mcp-Session-Id, per-request GitHub token auth is the sole boundary.
+		Stateless: true,
 		// DisableLocalhostProtection is opt-in via MCP_DISABLE_LOCALHOST_PROTECTION=true.
 		// Enable when the server runs behind a reverse proxy or inside a Docker network.
 		DisableLocalhostProtection: os.Getenv("MCP_DISABLE_LOCALHOST_PROTECTION") == "true",
 	})
-	go streamableHandler.pruneSessionLoginsLoop(defaultSessionPruneInterval)
 	return streamableHandler
-}
-
-func (h *StreamableHandler) rememberSession(sessionID, login string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.sessionLogins[sessionID] = login
-}
-
-func (h *StreamableHandler) forgetSession(sessionID string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	delete(h.sessionLogins, sessionID)
-}
-
-func (h *StreamableHandler) authorizeSession(sessionID, login string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	expected, ok := h.sessionLogins[sessionID]
-	return !ok || expected == login
-}
-
-func writeJSONError(w http.ResponseWriter, status int, code string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": code})
-}
-
-func (h *StreamableHandler) pruneSessionLoginsLoop(interval time.Duration) {
-	if interval <= 0 {
-		interval = defaultSessionPruneInterval
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			h.pruneSessionLogins()
-		case <-h.stopPruner:
-			return
-		}
-	}
-}
-
-func (h *StreamableHandler) pruneSessionLogins() {
-	server := h.server
-	if server == nil {
-		return
-	}
-
-	active := make(map[string]struct{})
-	for session := range server.Sessions() {
-		if id := session.ID(); id != "" {
-			active[id] = struct{}{}
-		}
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for sessionID := range h.sessionLogins {
-		if _, ok := active[sessionID]; !ok {
-			delete(h.sessionLogins, sessionID)
-		}
-	}
 }

@@ -77,7 +77,6 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `SQLITE_PATH` | | `/data/review-raven.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
-| `MCP_SESSION_TIMEOUT_MIN` | | `0` | Idle timeout for Streamable HTTP sessions (minutes). After this period without any HTTP request from a client, the session is closed and subsequent requests with the stale `Mcp-Session-Id` get `404 session not found`. The default `0` disables idle eviction so long-lived clients (Claude Code / IDE / `mcp-gateway`) do not hit the failure mode in #14. Trade-off: orphaned sessions (clients that disappear without sending `DELETE`) remain in memory until process shutdown — set a positive value (e.g. `1440` for 24h) if memory growth is a concern. |
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` or leave both unset. |
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_URL`. |
 

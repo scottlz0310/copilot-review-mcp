@@ -4,6 +4,8 @@
 **ステータス**: Draft  
 **対象**: `services/review-raven`
 
+> **注記（2026-08-25）**: 本書の §4.1・§6.1・Phase 3 で言及する「stateful session 化」（#64）は当時実装され、その後 [#111](https://github.com/scottlz0310/review-raven/issues/111)（MCP `2026-07-28` 移行、横断 tracker: [thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165)）で再び stateless（`StreamableHTTPOptions.Stateless: true`）へ戻した。理由は go-sdk が Streamable HTTP で `2026-07-28` を stateless server にのみ許可するため。resource 更新通知は stateful session ではなく `subscriptions/listen`（SEP-2575）経由で維持される。詳細は [docs/watch-tools.md](../watch-tools.md) の「Stateless Streamable HTTP（#111）」を参照。
+
 ---
 
 ## 1. 背景

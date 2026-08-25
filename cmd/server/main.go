@@ -60,7 +60,7 @@ func main() {
 		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
-	// MCP endpoints (auth required) — Streamable HTTP transport (stateful, shared server)
+	// MCP endpoints (auth required) — Streamable HTTP transport (stateless, MCP 2026-07-28)
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
 	builderOpts := tools.BuilderOptions{}
 	if cfg.gatewayInternalURL != "" {

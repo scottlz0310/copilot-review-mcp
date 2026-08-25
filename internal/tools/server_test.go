@@ -3,7 +3,6 @@ package tools
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -19,6 +18,10 @@ import (
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/watch"
 )
+
+// testMcpSessionIDHeader mirrors the SDK's session header name for tests that
+// need to assert on its (non-)presence in stateless mode.
+const testMcpSessionIDHeader = "Mcp-Session-Id"
 
 func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "server-test.db"))
@@ -47,88 +50,58 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 	}
 }
 
-func TestStreamableHandlerReusesStatefulSessionServer(t *testing.T) {
+// TestStreamableHandlerStatelessDoesNotIssueSessionID is a regression test for
+// MCP 2026-07-28 stateless negotiation: go-sdk only accepts the new protocol
+// version on Streamable HTTP when Stateless is true, and a stateless server
+// must not mint or echo Mcp-Session-Id.
+func TestStreamableHandlerStatelessDoesNotIssueSessionID(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
 
 	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
 		"token-a": "alice",
-	}))
-	t.Cleanup(httpServer.Close)
-
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
-	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
-		Endpoint:             httpServer.URL,
-		HTTPClient:           bearerTokenHTTPClient("token-a"),
-		DisableStandaloneSSE: true,
-		MaxRetries:           -1,
-	}, nil)
-	if err != nil {
-		t.Fatalf("client.Connect() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := session.Close(); err != nil {
-			t.Fatalf("session.Close() error = %v", err)
-		}
-	})
-
-	if _, err := session.ListTools(context.Background(), nil); err != nil {
-		t.Fatalf("first ListTools() error = %v", err)
-	}
-	if _, err := session.ListTools(context.Background(), nil); err != nil {
-		t.Fatalf("second ListTools() error = %v", err)
-	}
-
-	if got := handlerServerSessionCount(handler); got != 1 {
-		t.Fatalf("server session count = %d, want 1 stateful session reused across requests", got)
-	}
-	if got := handlerSessionLoginCount(handler); got != 1 {
-		t.Fatalf("session login count = %d, want 1", got)
-	}
-}
-
-func TestStreamableHandlerRejectsSessionUserMismatch(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
-
-	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
-		"token-a": "alice",
-		"token-b": "bob",
 	}))
 	t.Cleanup(httpServer.Close)
 
 	initBody := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}`)
 	resp := postMCP(t, httpServer.URL, "token-a", "", initBody)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
 		t.Fatalf("initialize status = %d, want 200; body=%s", resp.StatusCode, string(body))
 	}
-	sessionID := resp.Header.Get(mcpSessionIDHeader)
-	_ = resp.Body.Close()
-	if sessionID == "" {
-		t.Fatal("initialize response missing Mcp-Session-Id")
+	if sid := resp.Header.Get(testMcpSessionIDHeader); sid != "" {
+		t.Fatalf("initialize response Mcp-Session-Id = %q, want empty in stateless mode", sid)
 	}
+}
 
-	initializedBody := []byte(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`)
-	resp = postMCP(t, httpServer.URL, "token-b", sessionID, initializedBody)
+// TestStreamableHandlerStatelessRejectsGet confirms Stateless: true is wired
+// through to the SDK handler: per spec, stateless servers reject standalone
+// GET (and DELETE) with 405 rather than opening a session-bound SSE stream.
+func TestStreamableHandlerStatelessRejectsGet(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	req, err := http.NewRequest(http.MethodGet, httpServer.URL, nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest() error = %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer token-a")
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
+	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusForbidden {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("mismatched session status = %d, want 403; body=%s", resp.StatusCode, string(body))
-	}
-	if contentType := resp.Header.Get("Content-Type"); contentType != "application/json" {
-		t.Fatalf("mismatched session content type = %q, want application/json", contentType)
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode mismatched session response error = %v", err)
-	}
-	if got := body["error"]; got != sessionUserMismatchError {
-		t.Fatalf("mismatched session error = %q, want %q", got, sessionUserMismatchError)
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET status = %d, want 405 (stateless servers reject standalone GET)", resp.StatusCode)
 	}
 }
 
@@ -142,131 +115,6 @@ func TestTokenFromToolRequestPrefersCurrentAuthorizationHeader(t *testing.T) {
 
 	if got := tokenFromToolRequest(ctx, req); got != "fresh-token" {
 		t.Fatalf("tokenFromToolRequest() = %q, want fresh-token", got)
-	}
-}
-
-func TestResolveStreamableSessionTimeout(t *testing.T) {
-	tests := []struct {
-		name string
-		env  map[string]string
-		want time.Duration
-	}{
-		{
-			name: "unset uses default",
-			env:  nil,
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "empty uses default",
-			env:  map[string]string{sessionTimeoutEnv: ""},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "whitespace uses default",
-			env:  map[string]string{sessionTimeoutEnv: "   "},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "positive minutes",
-			env:  map[string]string{sessionTimeoutEnv: "120"},
-			want: 120 * time.Minute,
-		},
-		{
-			name: "zero disables idle eviction",
-			env:  map[string]string{sessionTimeoutEnv: "0"},
-			want: 0,
-		},
-		{
-			name: "negative falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "-5"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "non-integer falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "abc"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "max valid minute boundary",
-			env:  map[string]string{sessionTimeoutEnv: "153722867"},
-			want: time.Duration(153722867) * time.Minute,
-		},
-		{
-			name: "overflowing minutes fall back to default",
-			env:  map[string]string{sessionTimeoutEnv: "153722868"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "huge value falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "99999999999999999999"},
-			want: defaultStreamableSessionTimeout,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			getenv := func(key string) string { return tt.env[key] }
-			if got := resolveStreamableSessionTimeout(getenv); got != tt.want {
-				t.Fatalf("resolveStreamableSessionTimeout(%v) = %v, want %v", tt.env, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBuildStreamableHandlerPropagatesSessionTimeout(t *testing.T) {
-	tests := []struct {
-		name string
-		env  string
-		want time.Duration
-	}{
-		{
-			name: "unset uses default",
-			env:  "",
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "explicit override",
-			env:  "5",
-			want: 5 * time.Minute,
-		},
-		{
-			name: "zero disables idle eviction",
-			env:  "0",
-			want: 0,
-		},
-		{
-			name: "invalid value falls back to default",
-			env:  "abc",
-			want: defaultStreamableSessionTimeout,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(sessionTimeoutEnv, tt.env)
-
-			db := openServerTestDB(t)
-			handler := BuildStreamableHandler(db, 30*time.Second)
-			t.Cleanup(handler.Close)
-
-			if handler.sessionTimeout != tt.want {
-				t.Fatalf("BuildStreamableHandler sessionTimeout = %v, want %v (env=%q)",
-					handler.sessionTimeout, tt.want, tt.env)
-			}
-		})
-	}
-}
-
-func TestStreamableHandlerPrunesStaleSessionLogins(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
-
-	handler.rememberSession("stale-session", "alice")
-	handler.pruneSessionLogins()
-
-	if got := handlerSessionLoginCount(handler); got != 0 {
-		t.Fatalf("session login count = %d, want stale session pruned", got)
 	}
 }
 
@@ -306,7 +154,7 @@ func postMCP(t *testing.T, endpoint, token, sessionID string, body []byte) *http
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Content-Type", "application/json")
 	if sessionID != "" {
-		req.Header.Set(mcpSessionIDHeader, sessionID)
+		req.Header.Set(testMcpSessionIDHeader, sessionID)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -315,122 +163,20 @@ func postMCP(t *testing.T, endpoint, token, sessionID string, body []byte) *http
 	return resp
 }
 
-func bearerTokenHTTPClient(token string) *http.Client {
-	return &http.Client{
-		Transport: bearerTokenRoundTripper{
-			token: token,
-			base:  http.DefaultTransport,
-		},
-	}
-}
-
-type bearerTokenRoundTripper struct {
-	token string
-	base  http.RoundTripper
-}
-
-func (rt bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("Authorization", "Bearer "+rt.token)
-	return rt.base.RoundTrip(req)
-}
-
-func handlerServerSessionCount(handler *StreamableHandler) int {
-	count := 0
-	for range handler.server.Sessions() {
-		count++
-	}
-	return count
-}
-
-
-// nonFlushingResponseWriter wraps http.ResponseWriter without forwarding
-// http.Flusher, so type-asserting for it always fails.
-type nonFlushingResponseWriter struct{ http.ResponseWriter }
-
-// TestStreamableHandlerServeHTTPNonFlusherNotExposed is a regression test for
-// the sessionRecorderFlusher optional-interface contract: when the underlying
-// ResponseWriter does not implement http.Flusher, the writer passed to the
-// inner handler must also not expose http.Flusher.
-func TestStreamableHandlerServeHTTPNonFlusherNotExposed(t *testing.T) {
-	var sawFlusher bool
-	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, sawFlusher = w.(http.Flusher)
-	})
-	h := &StreamableHandler{
-		handler:       fakeInner,
-		sessionLogins: make(map[string]string),
-	}
-	t.Cleanup(h.Close)
-
-	nfw := &nonFlushingResponseWriter{ResponseWriter: httptest.NewRecorder()}
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-
-	h.ServeHTTP(nfw, req)
-
-	if sawFlusher {
-		t.Error("inner handler saw http.Flusher on a writer whose underlying ResponseWriter does not support it")
-	}
-}
-
-// TestSessionRecorderUnwrap verifies that sessionRecorder.Unwrap returns the
-// underlying ResponseWriter, enabling http.ResponseController to traverse the
-// middleware chain and reach optional interfaces on the original writer.
-// sessionRecorderFlusher inherits the same path via embedding.
-func TestSessionRecorderUnwrap(t *testing.T) {
-	rec := httptest.NewRecorder()
-	sr := &sessionRecorder{ResponseWriter: rec}
-	if got := sr.Unwrap(); got != rec {
-		t.Errorf("sessionRecorder.Unwrap() = %v, want underlying ResponseWriter", got)
-	}
-
-	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
-	if got := srf.Unwrap(); got != rec {
-		t.Errorf("sessionRecorderFlusher.Unwrap() = %v, want underlying ResponseWriter", got)
-	}
-}
-
-// post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
-// A fake inner handler sets Mcp-Session-Id in the response headers and returns
-// without calling Write, WriteHeader, or Flush — exercising the implicit-commit
-// path where net/http would commit the headers on handler return. The test
-// confirms that sessionLogins is populated despite no explicit commit call.
-func TestStreamableHandlerServeHTTPFallbackRegistersSession(t *testing.T) {
-	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Sets the session header but intentionally calls no write methods,
-		// simulating the implicit-commit path.
-		w.Header().Set(mcpSessionIDHeader, "implicit-sid")
-	})
-	h := &StreamableHandler{
-		handler:       fakeInner,
-		sessionLogins: make(map[string]string),
-	}
-	t.Cleanup(h.Close)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	ctx := context.WithValue(req.Context(), middleware.ContextKeyLogin, "alice")
-	req = req.WithContext(ctx)
-
-	h.ServeHTTP(rec, req)
-
-	h.mu.Lock()
-	login, registered := h.sessionLogins["implicit-sid"]
-	h.mu.Unlock()
-
-	if !registered {
-		t.Fatal("post-ServeHTTP fallback did not register session for implicit-commit path")
-	}
-	if login != "alice" {
-		t.Fatalf("registered login = %q, want alice", login)
-	}
-}
-
 // TestSubscribeHandlerRejectsLegacyURIScheme is a regression test for the ghost
 // subscription bug: before the fix, copilot-review://watch/... URIs fell through
 // the watchPrefix check and returned nil (success), causing go-sdk to register a
 // subscription that would never receive notifications. The fix returns
 // mcp.ResourceNotFoundError for the legacy scheme.
+//
+// This sends the raw subscriptions/listen JSON-RPC request instead of going
+// through mcp.ClientSession.Subscribe(): under protocol 2026-07-28,
+// ClientSession.Subscribe() (go-sdk v1.7.0) discards the server's JSON-RPC
+// error for this method — verified by wire capture that the server correctly
+// returns HTTP 400 with the ResourceNotFound error while Subscribe() itself
+// returns nil. That is an upstream go-sdk client-side bug, not a review-raven
+// authorization gap; asserting on the raw HTTP response is what actually
+// exercises our SubscribeHandler's security boundary.
 func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
@@ -441,72 +187,30 @@ func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
-	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
-		Endpoint:             httpServer.URL,
-		HTTPClient:           bearerTokenHTTPClient("token-a"),
-		DisableStandaloneSSE: true,
-		MaxRetries:           -1,
-	}, nil)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test-client","version":"1.0.0"}},"notifications":{"resourceSubscriptions":["copilot-review://watch/abc123"]}}}`)
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL, bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("client.Connect() error = %v", err)
+		t.Fatalf("http.NewRequest() error = %v", err)
 	}
-	t.Cleanup(func() { _ = session.Close() })
-
-	// Subscribe with legacy URI — expect ResourceNotFound error.
-	err = session.Subscribe(context.Background(), &mcp.SubscribeParams{
-		URI: "copilot-review://watch/abc123",
-	})
-	if err == nil {
-		t.Fatal("Subscribe with legacy URI got success, want ResourceNotFound error")
+	req.Header.Set("Authorization", "Bearer token-a")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	req.Header.Set("Mcp-Method", "subscriptions/listen")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "Resource not found") {
-		t.Fatalf("Subscribe error = %q, want to contain \"Resource not found\"", err.Error())
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body error = %v", err)
 	}
-}
-
-func handlerSessionLoginCount(handler *StreamableHandler) int {
-	handler.mu.Lock()
-	defer handler.mu.Unlock()
-	return len(handler.sessionLogins)
-}
-
-// TestSessionRecorderFlushRegistersSession verifies that sessionRecorderFlusher.Flush
-// calls rememberSession before forwarding to the underlying http.Flusher,
-// covering the race path where the SDK sets Mcp-Session-Id and flushes headers
-// without a prior Write or WriteHeader call.
-func TestSessionRecorderFlushRegistersSession(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
-
-	rec := httptest.NewRecorder()
-	rec.Header().Set(mcpSessionIDHeader, "flush-session-id")
-
-	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
-	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
-	srf.Flush()
-
-	handler.mu.Lock()
-	login, registered := handler.sessionLogins["flush-session-id"]
-	handler.mu.Unlock()
-
-	if !registered {
-		t.Fatal("Flush() did not register session via rememberSession")
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("subscriptions/listen for legacy URI status = 200, want an error status; body=%s", respBody)
 	}
-	if login != "alice" {
-		t.Fatalf("Flush() registered login = %q, want alice", login)
-	}
-	if !rec.Flushed {
-		t.Fatal("Flush() did not forward to the underlying http.Flusher")
-	}
-
-	// A second Flush must not double-register (once.Do guarantee).
-	srf.Flush()
-	handler.mu.Lock()
-	count := len(handler.sessionLogins)
-	handler.mu.Unlock()
-	if count != 1 {
-		t.Fatalf("session login count after second Flush = %d, want 1 (once.Do)", count)
+	if !strings.Contains(string(respBody), "Resource not found") {
+		t.Fatalf("subscriptions/listen response = %q, want to contain \"Resource not found\"", respBody)
 	}
 }
