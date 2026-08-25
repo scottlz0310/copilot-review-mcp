@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
+> **Breaking release.** Three changes require action from operators: the MCP transport is now stateless on protocol `2026-07-28`, the process-wide GitHub token fallback is gone, and the legacy `copilot-review://` scheme and `COPILOT_REVIEW_*` env vars have been removed. See **Changed** and **Removed** below.
+
 ### Added
 
 - `diagnose_github_token` MCP tool — reports the current request's token login and OAuth scopes (parsed from GitHub's `X-OAuth-Scopes` response header on `GET /user`), without ever returning the raw token. Added to help diagnose cases where read operations succeed but a write operation (e.g. `reply_and_resolve_review_thread`) fails with `PERMISSION_DENIED` due to insufficient token scope. ([Issue #89](https://github.com/scottlz0310/review-raven/issues/89))
@@ -164,5 +168,6 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0

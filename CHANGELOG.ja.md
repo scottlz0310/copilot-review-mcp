@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
+> **破壊的変更を含むリリースです。** 運用者側の対応が必要な変更が 3 件あります: MCP transport が protocol `2026-07-28` の stateless になったこと、プロセス全体の GitHub token フォールバックが削除されたこと、legacy `copilot-review://` スキームと `COPILOT_REVIEW_*` 環境変数が削除されたこと。詳細は下記の **変更** / **削除** を参照してください。
+
 ### 追加
 
 - `diagnose_github_token` MCP tool を追加 — 現在のリクエストで使われているトークンの login と OAuth スコープ(GitHub `GET /user` の `X-OAuth-Scopes` レスポンスヘッダーから解析)を返す。トークン生値は返さない。read 系操作は成功するのに write 系操作(`reply_and_resolve_review_thread` 等)がトークンのスコープ不足で `PERMISSION_DENIED` になるケースの原因切り分け用。([Issue #89](https://github.com/scottlz0310/review-raven/issues/89))
@@ -164,5 +168,6 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0
