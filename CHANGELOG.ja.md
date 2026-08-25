@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
+> **破壊的変更を含むリリースです。** 運用者側の対応が必要な変更が 3 件あります: MCP transport が protocol `2026-07-28` の stateless になったこと、プロセス全体の GitHub token フォールバックが削除されたこと、legacy `copilot-review://` スキームと `COPILOT_REVIEW_*` 環境変数が削除されたこと。詳細は下記の **変更** / **削除** を参照してください。
+
 ### 追加
 
 - `diagnose_github_token` MCP tool を追加 — 現在のリクエストで使われているトークンの login と OAuth スコープ(GitHub `GET /user` の `X-OAuth-Scopes` レスポンスヘッダーから解析)を返す。トークン生値は返さない。read 系操作は成功するのに write 系操作(`reply_and_resolve_review_thread` 等)がトークンのスコープ不足で `PERMISSION_DENIED` になるケースの原因切り分け用。([Issue #89](https://github.com/scottlz0310/review-raven/issues/89))
@@ -36,6 +40,8 @@
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — MCP ポーリング Phase 1 の代替として **Phase 1S**（`mcp-resource-subscriber --json` を使うサブスクリプション方式）を追加。全体フロー図を 2 経路エントリに更新。([Issue #74](https://github.com/scottlz0310/review-raven/issues/74))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — **Copilot review 専用** スキルとして明示的にスコープを限定。Phase 6 `REQUEST_REREVIEW` を `request_copilot_review` + Copilot watch ループ（当初設計）に戻した。スコープ注意書きと `## 関連スキル`（`thread-owl-review-cycle` へのリンク）を追加。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
+
+- **Go toolchain の要求バージョンを 1.27 へ引き上げ。** `go.mod` の宣言が `go 1.27.0` になり、builder image も `golang:1.27-alpine` へ移行。ソースからビルドする場合は Go 1.27+ が必要（README の要求記述も合わせて更新）。`modernc.org/sqlite` は v1.57.0 へ更新。([PR #108](https://github.com/scottlz0310/review-raven/pull/108))
 
 ### 削除
 
@@ -164,5 +170,6 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0

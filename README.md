@@ -84,7 +84,7 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 
 ## Local Development
 
-Requires Go 1.26+.
+Requires Go 1.27+.
 
 ```bash
 # Run tests

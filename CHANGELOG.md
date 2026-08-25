@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
+> **Breaking release.** Three changes require action from operators: the MCP transport is now stateless on protocol `2026-07-28`, the process-wide GitHub token fallback is gone, and the legacy `copilot-review://` scheme and `COPILOT_REVIEW_*` env vars have been removed. See **Changed** and **Removed** below.
+
 ### Added
 
 - `diagnose_github_token` MCP tool — reports the current request's token login and OAuth scopes (parsed from GitHub's `X-OAuth-Scopes` response header on `GET /user`), without ever returning the raw token. Added to help diagnose cases where read operations succeed but a write operation (e.g. `reply_and_resolve_review_thread`) fails with `PERMISSION_DENIED` due to insufficient token scope. ([Issue #89](https://github.com/scottlz0310/review-raven/issues/89))
@@ -36,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — added **Phase 1S** (subscription-based wait using `mcp-resource-subscriber --json`) as an alternative to the MCP polling Phase 1. Updated Overall Flow diagram to reflect the two-path entry. ([Issue #74](https://github.com/scottlz0310/review-raven/issues/74))
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — explicitly scoped to **Copilot review only**. Phase 6 `REQUEST_REREVIEW` reverted to `request_copilot_review` + Copilot watch loop (as originally designed). Added scope callout and `## See Also` link to `thread-owl-review-cycle`. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge). ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
+
+- **Go toolchain requirement raised to 1.27.** `go.mod` now declares `go 1.27.0` and the builder image moved to `golang:1.27-alpine`; building from source requires Go 1.27+ (the README requirement was updated to match). `modernc.org/sqlite` moved to v1.57.0. ([PR #108](https://github.com/scottlz0310/review-raven/pull/108))
 
 ### Removed
 
@@ -164,5 +170,6 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0
