@@ -1,13 +1,13 @@
 module github.com/scottlz0310/review-raven
 
-go 1.26.7
+go 1.27.0
 
 require (
 	github.com/google/go-github/v89 v89.0.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed
 	golang.org/x/oauth2 v0.36.0
-	modernc.org/sqlite v1.56.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
