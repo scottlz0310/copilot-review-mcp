@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — explicitly scoped to **Copilot review only**. Phase 6 `REQUEST_REREVIEW` reverted to `request_copilot_review` + Copilot watch loop (as originally designed). Added scope callout and `## See Also` link to `thread-owl-review-cycle`. ([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — added Re-review request flow section documenting the responsibility boundary between review-raven (posts comment), thread-owl (webhook → queue), and mcp-resource-subscriber (subscription bridge). ([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 
+- **Go toolchain requirement raised to 1.27.** `go.mod` now declares `go 1.27.0` and the builder image moved to `golang:1.27-alpine`; building from source requires Go 1.27+ (the README requirement was updated to match). `modernc.org/sqlite` moved to v1.57.0. ([PR #108](https://github.com/scottlz0310/review-raven/pull/108))
+
 ### Removed
 
 - Removed the process-wide `GITHUB_PERSONAL_ACCESS_TOKEN` / `REVIEW_RAVEN_DEFAULT_USER` fallback. Every GitHub API path now requires the request-scoped identity and Bearer token injected by mcp-gateway and fails closed when either header is missing or malformed. ([Issue #106](https://github.com/scottlz0310/review-raven/issues/106))

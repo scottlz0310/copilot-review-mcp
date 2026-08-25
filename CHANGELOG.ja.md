@@ -41,6 +41,8 @@
 - `docs/skills/pr-review-cycle.md` / `.ja.md` — **Copilot review 専用** スキルとして明示的にスコープを限定。Phase 6 `REQUEST_REREVIEW` を `request_copilot_review` + Copilot watch ループ（当初設計）に戻した。スコープ注意書きと `## 関連スキル`（`thread-owl-review-cycle` へのリンク）を追加。([Issue #71](https://github.com/scottlz0310/review-raven/issues/71))
 - `docs/architecture.md` / `.ja.md` — 再レビュー依頼フローのセクションを追加。review-raven（コメント投稿）・thread-owl（webhook → queue）・mcp-resource-subscriber（購読ブリッジ）の責務境界を文書化。([Issue #69](https://github.com/scottlz0310/review-raven/issues/69))
 
+- **Go toolchain の要求バージョンを 1.27 へ引き上げ。** `go.mod` の宣言が `go 1.27.0` になり、builder image も `golang:1.27-alpine` へ移行。ソースからビルドする場合は Go 1.27+ が必要（README の要求記述も合わせて更新）。`modernc.org/sqlite` は v1.57.0 へ更新。([PR #108](https://github.com/scottlz0310/review-raven/pull/108))
+
 ### 削除
 
 - process-wide な `GITHUB_PERSONAL_ACCESS_TOKEN` / `REVIEW_RAVEN_DEFAULT_USER` fallback を削除。すべての GitHub API 経路で mcp-gateway が request ごとに注入する identity と Bearer token を必須とし、ヘッダー欠落・不正時は fail-closed で拒否する。([Issue #106](https://github.com/scottlz0310/review-raven/issues/106))
