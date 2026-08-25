@@ -67,8 +67,9 @@ type BuilderOptions struct {
 }
 
 // BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP
-// in stateless mode (per-request temporary sessions, no Mcp-Session-Id). GitHub
-// clients are created per tool call from the authenticated request headers.
+// in stateless mode (per-request temporary sessions, no Mcp-Session-Id), and
+// only over protocol 2026-07-28 — the legacy initialize handshake is refused.
+// GitHub clients are created per tool call from the authenticated request headers.
 func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHandler {
 	return BuildStreamableHandlerWithOptions(db, threshold, BuilderOptions{})
 }
@@ -149,7 +150,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		}
 		return srv
 	}
-	streamableHandler.handler = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
+	streamableHandler.handler = rejectLegacyInitialize(mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
 		// Stateless is required for MCP 2026-07-28 negotiation: go-sdk only
 		// accepts the new protocol version on the Streamable HTTP transport when
 		// Stateless is true (stateful servers negotiate down to 2025-11-25).
@@ -159,6 +160,6 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		// DisableLocalhostProtection is opt-in via MCP_DISABLE_LOCALHOST_PROTECTION=true.
 		// Enable when the server runs behind a reverse proxy or inside a Docker network.
 		DisableLocalhostProtection: os.Getenv("MCP_DISABLE_LOCALHOST_PROTECTION") == "true",
-	})
+	}))
 	return streamableHandler
 }

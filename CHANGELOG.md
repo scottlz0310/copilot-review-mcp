@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: the deprecated `initialize` handshake is now refused.** review-raven serves MCP protocol `2026-07-28` only, so a POST carrying an `initialize` call is answered with HTTP 400 and JSON-RPC `-32022` (`unsupported protocol version`), whose `data` advertises `supported: ["2026-07-28"]` and echoes the version the client asked for. Previously go-sdk answered the handshake and negotiated down to the client's legacy revision — a Codex 0.149.1 A/B run (`mcp_2026_07_28` disabled process-locally) showed review-raven staying `ready` on `2025-06-18` where thread-owl already rejected it, leaving review-raven the last server in the review stack that a pre-SEP-2575 client could still reach. go-sdk exposes no server-side switch for this, so the handshake is gated in front of the SDK handler; the gate matches the modern-only rejection the TS SDK serves thread-owl via `legacy: "reject"`. Clients must discover the server through `server/discover`. Part of the [thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165) cross-repo MCP `2026-07-28` migration. ([Issue #117](https://github.com/scottlz0310/review-raven/issues/117))
+
 ## [0.2.0] - 2026-08-25
 
 > **Breaking release.** Three changes require action from operators: the MCP transport is now stateless on protocol `2026-07-28`, the process-wide GitHub token fallback is gone, and the legacy `copilot-review://` scheme and `COPILOT_REVIEW_*` env vars have been removed. See **Changed** and **Removed** below.

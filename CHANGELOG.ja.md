@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 変更
+
+- **破壊的変更: 非推奨の `initialize` handshake を拒否するようにしました。** review-raven は MCP protocol `2026-07-28` のみを提供するため、`initialize` を含む POST には HTTP 400 と JSON-RPC `-32022`（`unsupported protocol version`）を返します。`data` には `supported: ["2026-07-28"]` と client が要求したバージョンを載せます。従来は go-sdk が handshake に応答し、client の legacy revision へネゴシエートしていました — Codex 0.149.1 の A/B 検証（`mcp_2026_07_28` を process-local に無効化）では、thread-owl が既に拒否している `2025-06-18` に対して review-raven だけが `ready` のままであり、SEP-2575 以前の client が到達できる最後の server として残っていました。go-sdk には server 側の切り替えスイッチが無いため、SDK handler の手前で handshake を遮断します。この拒否契約は、TS SDK の `legacy: "reject"` が thread-owl に提供している modern-only 拒否と同じ形です。client は `server/discover` で discovery してください。[thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165) の repo 横断 MCP `2026-07-28` 移行の一部です。([Issue #117](https://github.com/scottlz0310/review-raven/issues/117))
+
 ## [0.2.0] - 2026-08-25
 
 > **破壊的変更を含むリリースです。** 運用者側の対応が必要な変更が 3 件あります: MCP transport が protocol `2026-07-28` の stateless になったこと、プロセス全体の GitHub token フォールバックが削除されたこと、legacy `copilot-review://` スキームと `COPILOT_REVIEW_*` 環境変数が削除されたこと。詳細は下記の **変更** / **削除** を参照してください。

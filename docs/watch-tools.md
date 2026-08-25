@@ -61,6 +61,8 @@ Since #111 (MCP `2026-07-28` migration, see [thread-owl#165](https://github.com/
 - There is no session-to-login binding: per-request GitHub token authentication (via `middleware`) is the sole authorization boundary. This also removes the session-hijacking attack surface that the old `sessionLogins` map defended against — with no session to hijack, there is nothing to defend.
 - `EventStore` / `Last-Event-ID` stream resumption is not used: `2026-07-28` does not support it.
 - GET and DELETE requests return `405 Method Not Allowed` (stateless servers do not open a standalone SSE stream or accept session teardown).
+- **Modern-only (#117)**: a POST carrying the deprecated `initialize` handshake is refused with HTTP 400 and JSON-RPC `-32022`, whose `data` carries `supported: ["2026-07-28"]` and the version the client requested. go-sdk would otherwise answer the handshake and negotiate down to the client's legacy revision, so the rejection is implemented as a gate (`rejectLegacyInitialize`) in front of the SDK handler. This mirrors the modern-only rejection thread-owl gets from the TS SDK's `legacy: "reject"`.
+  - Known residual: `server/discover` still advertises every protocol version the SDK supports, because go-sdk derives that list from the transport and offers no hook to narrow it. It does not widen what the server actually serves — the only path down to a legacy revision is `initialize`, which is now refused.
 
 Test considerations:
 

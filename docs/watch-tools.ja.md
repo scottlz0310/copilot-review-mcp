@@ -61,6 +61,8 @@ watch 系ツールは `recommended_next_action` と、必要に応じて `next_p
 - session と login の紐付けは存在しません。認可境界は per-request の GitHub token 認証（`middleware` 経由）のみです。これにより旧 `sessionLogins` map が防いでいた session hijacking の攻撃面自体が消滅しました — session が無いので奪い取るものがありません。
 - `EventStore` / `Last-Event-ID` による stream resumption は使用しません（`2026-07-28` では非サポート）。
 - GET / DELETE request は `405 Method Not Allowed` を返します（stateless server は standalone SSE stream を開かず、session teardown も受け付けません）。
+- **modern-only（#117）**: 非推奨の `initialize` handshake を含む POST は HTTP 400 と JSON-RPC `-32022` で拒否します。`data` には `supported: ["2026-07-28"]` と client が要求したバージョンを載せます。放置すると go-sdk が handshake に応答して client の legacy revision へネゴシエートしてしまうため、拒否は SDK handler の手前の gate（`rejectLegacyInitialize`）として実装しています。TS SDK の `legacy: "reject"` が thread-owl に提供している modern-only 拒否と同じ形です。
+  - 既知の残差: `server/discover` は SDK が対応する全 protocol version を広告し続けます。go-sdk はこの一覧を transport から導出しており、絞り込む hook がないためです。実際に提供する範囲が広がるわけではありません — legacy revision へ落ちる経路は `initialize` のみで、それは拒否されるようになりました。
 
 テスト観点:
 
