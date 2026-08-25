@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -18,6 +19,23 @@ import (
 	"github.com/scottlz0310/review-raven/internal/middleware"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/watch"
+)
+
+const (
+	// testMcpSessionIDHeader mirrors the SDK's session header name for tests
+	// that need to assert on its (non-)presence in stateless mode.
+	testMcpSessionIDHeader = "Mcp-Session-Id"
+
+	// testProtocolVersion20260728 is the protocol revision this server adopts.
+	// go-sdk negotiates it on Streamable HTTP only when Stateless is true.
+	testProtocolVersion20260728 = "2026-07-28"
+
+	// testNewProtocolMeta is the per-request _meta block that SEP-2575 requires
+	// on every 2026-07-28 request, replacing the initialize handshake.
+	testNewProtocolMeta = `"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"` + testProtocolVersion20260728 + `",` +
+		`"io.modelcontextprotocol/clientCapabilities":{},` +
+		`"io.modelcontextprotocol/clientInfo":{"name":"test-client","version":"1.0.0"}}`
 )
 
 func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
@@ -47,7 +65,14 @@ func TestStreamableHandlerCloseClosesWatchManager(t *testing.T) {
 	}
 }
 
-func TestStreamableHandlerReusesStatefulSessionServer(t *testing.T) {
+// TestStreamableHandlerNegotiates20260728 is the primary contract test for the
+// adopted protocol. Connecting a real SDK client exercises the discovery-first
+// handshake (server/discover, not the legacy initialize), and the negotiated
+// version must be 2026-07-28 — go-sdk downgrades a stateful server to
+// 2025-11-25, so this assertion is what actually pins Stateless: true.
+// Representative tool and resource requests then confirm the registered
+// surface is reachable over the negotiated protocol.
+func TestStreamableHandlerNegotiates20260728(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
@@ -67,68 +92,158 @@ func TestStreamableHandlerReusesStatefulSessionServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client.Connect() error = %v", err)
 	}
-	t.Cleanup(func() {
-		if err := session.Close(); err != nil {
-			t.Fatalf("session.Close() error = %v", err)
-		}
-	})
+	t.Cleanup(func() { _ = session.Close() })
 
-	if _, err := session.ListTools(context.Background(), nil); err != nil {
-		t.Fatalf("first ListTools() error = %v", err)
-	}
-	if _, err := session.ListTools(context.Background(), nil); err != nil {
-		t.Fatalf("second ListTools() error = %v", err)
+	if got := session.InitializeResult().ProtocolVersion; got != testProtocolVersion20260728 {
+		t.Fatalf("negotiated protocol version = %q, want %q (a stateful server would fall back to 2025-11-25)",
+			got, testProtocolVersion20260728)
 	}
 
-	if got := handlerServerSessionCount(handler); got != 1 {
-		t.Fatalf("server session count = %d, want 1 stateful session reused across requests", got)
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() over %s error = %v", testProtocolVersion20260728, err)
 	}
-	if got := handlerSessionLoginCount(handler); got != 1 {
-		t.Fatalf("session login count = %d, want 1", got)
+	if len(tools.Tools) == 0 {
+		t.Fatal("ListTools() returned no tools; the registered tool surface is unreachable over the new protocol")
+	}
+	if _, err := session.ListResources(context.Background(), nil); err != nil {
+		t.Fatalf("ListResources() over %s error = %v", testProtocolVersion20260728, err)
 	}
 }
 
-func TestStreamableHandlerRejectsSessionUserMismatch(t *testing.T) {
+// TestStreamableHandlerServerDiscoverIsStateless pins the wire-level contract
+// of the discovery RPC that replaces initialize: it must succeed, advertise
+// 2026-07-28, and must not mint an Mcp-Session-Id (mcp-gateway relies on the
+// absence of session affinity — see mcp-gateway docs/mcp-protocol-transparency.md).
+func TestStreamableHandlerServerDiscoverIsStateless(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
 	t.Cleanup(handler.Close)
 
 	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
 		"token-a": "alice",
-		"token-b": "bob",
 	}))
 	t.Cleanup(httpServer.Close)
 
-	initBody := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}`)
-	resp := postMCP(t, httpServer.URL, "token-a", "", initBody)
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		t.Fatalf("initialize status = %d, want 200; body=%s", resp.StatusCode, string(body))
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` + testNewProtocolMeta + `}}`)
+	req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "server/discover", body)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
 	}
-	sessionID := resp.Header.Get(mcpSessionIDHeader)
-	_ = resp.Body.Close()
-	if sessionID == "" {
-		t.Fatal("initialize response missing Mcp-Session-Id")
-	}
-
-	initializedBody := []byte(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`)
-	resp = postMCP(t, httpServer.URL, "token-b", sessionID, initializedBody)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusForbidden {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("mismatched session status = %d, want 403; body=%s", resp.StatusCode, string(body))
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body error = %v", err)
 	}
-	if contentType := resp.Header.Get("Content-Type"); contentType != "application/json" {
-		t.Fatalf("mismatched session content type = %q, want application/json", contentType)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("server/discover status = %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+	if sid := resp.Header.Get(testMcpSessionIDHeader); sid != "" {
+		t.Fatalf("server/discover response %s = %q, want empty in stateless mode", testMcpSessionIDHeader, sid)
+	}
+	if !strings.Contains(string(respBody), testProtocolVersion20260728) {
+		t.Fatalf("server/discover response does not advertise %s: %s", testProtocolVersion20260728, respBody)
+	}
+}
+
+// TestStreamableHandlerSubscriptionsListenAcknowledges covers the happy path of
+// the RPC that replaced resources/subscribe and the standalone GET stream.
+// Per spec the server MUST send notifications/subscriptions/acknowledged as the
+// first message on the long-lived stream, carrying the listen request's JSON-RPC
+// ID as io.modelcontextprotocol/subscriptionId so clients can demultiplex.
+func TestStreamableHandlerSubscriptionsListenAcknowledges(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	// The stream stays open until the client goes away, so cancel the request
+	// context once the acknowledgement has been observed.
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	body := []byte(`{"jsonrpc":"2.0","id":7,"method":"subscriptions/listen","params":{` +
+		testNewProtocolMeta + `,"notifications":{"toolsListChanged":true}}}`)
+	req := newProtocolRequest(t, ctx, httpServer.URL, "token-a", "subscriptions/listen", body)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("http.Do() error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("subscriptions/listen status = %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("subscriptions/listen Content-Type = %q, want text/event-stream (long-lived stream)", ct)
 	}
 
-	var body map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode mismatched session response error = %v", err)
+	ack := readFirstSSEData(t, resp.Body)
+	var decoded struct {
+		Method string `json:"method"`
+		Params struct {
+			Meta map[string]any `json:"_meta"`
+		} `json:"params"`
 	}
-	if got := body["error"]; got != sessionUserMismatchError {
-		t.Fatalf("mismatched session error = %q, want %q", got, sessionUserMismatchError)
+	if err := json.Unmarshal(ack, &decoded); err != nil {
+		t.Fatalf("decode first stream message error = %v; raw=%s", err, ack)
+	}
+	if decoded.Method != "notifications/subscriptions/acknowledged" {
+		t.Fatalf("first stream message method = %q, want notifications/subscriptions/acknowledged; raw=%s",
+			decoded.Method, ack)
+	}
+	if _, ok := decoded.Params.Meta["io.modelcontextprotocol/subscriptionId"]; !ok {
+		t.Fatalf("acknowledgement is missing io.modelcontextprotocol/subscriptionId; raw=%s", ack)
+	}
+}
+
+// TestStreamableHandlerStatelessRejects405Methods confirms Stateless: true is
+// wired through to the SDK handler. Per spec a stateless server has no
+// standalone GET stream to open and no session to tear down via DELETE, so both
+// must return 405 — mcp-gateway forwards this status verbatim.
+func TestStreamableHandlerStatelessRejects405Methods(t *testing.T) {
+	db := openServerTestDB(t)
+	handler := BuildStreamableHandler(db, 30*time.Second)
+	t.Cleanup(handler.Close)
+
+	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+		"token-a": "alice",
+	}))
+	t.Cleanup(httpServer.Close)
+
+	tests := []struct {
+		name   string
+		method string
+		accept string
+	}{
+		{name: "standalone GET stream", method: http.MethodGet, accept: "text/event-stream"},
+		{name: "session teardown DELETE", method: http.MethodDelete, accept: "application/json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, httpServer.URL, nil)
+			if err != nil {
+				t.Fatalf("http.NewRequest() error = %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer token-a")
+			req.Header.Set("Accept", tt.accept)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("http.Do() error = %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Fatalf("%s status = %d, want 405 in stateless mode", tt.method, resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -142,131 +257,6 @@ func TestTokenFromToolRequestPrefersCurrentAuthorizationHeader(t *testing.T) {
 
 	if got := tokenFromToolRequest(ctx, req); got != "fresh-token" {
 		t.Fatalf("tokenFromToolRequest() = %q, want fresh-token", got)
-	}
-}
-
-func TestResolveStreamableSessionTimeout(t *testing.T) {
-	tests := []struct {
-		name string
-		env  map[string]string
-		want time.Duration
-	}{
-		{
-			name: "unset uses default",
-			env:  nil,
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "empty uses default",
-			env:  map[string]string{sessionTimeoutEnv: ""},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "whitespace uses default",
-			env:  map[string]string{sessionTimeoutEnv: "   "},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "positive minutes",
-			env:  map[string]string{sessionTimeoutEnv: "120"},
-			want: 120 * time.Minute,
-		},
-		{
-			name: "zero disables idle eviction",
-			env:  map[string]string{sessionTimeoutEnv: "0"},
-			want: 0,
-		},
-		{
-			name: "negative falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "-5"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "non-integer falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "abc"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "max valid minute boundary",
-			env:  map[string]string{sessionTimeoutEnv: "153722867"},
-			want: time.Duration(153722867) * time.Minute,
-		},
-		{
-			name: "overflowing minutes fall back to default",
-			env:  map[string]string{sessionTimeoutEnv: "153722868"},
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "huge value falls back to default",
-			env:  map[string]string{sessionTimeoutEnv: "99999999999999999999"},
-			want: defaultStreamableSessionTimeout,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			getenv := func(key string) string { return tt.env[key] }
-			if got := resolveStreamableSessionTimeout(getenv); got != tt.want {
-				t.Fatalf("resolveStreamableSessionTimeout(%v) = %v, want %v", tt.env, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBuildStreamableHandlerPropagatesSessionTimeout(t *testing.T) {
-	tests := []struct {
-		name string
-		env  string
-		want time.Duration
-	}{
-		{
-			name: "unset uses default",
-			env:  "",
-			want: defaultStreamableSessionTimeout,
-		},
-		{
-			name: "explicit override",
-			env:  "5",
-			want: 5 * time.Minute,
-		},
-		{
-			name: "zero disables idle eviction",
-			env:  "0",
-			want: 0,
-		},
-		{
-			name: "invalid value falls back to default",
-			env:  "abc",
-			want: defaultStreamableSessionTimeout,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(sessionTimeoutEnv, tt.env)
-
-			db := openServerTestDB(t)
-			handler := BuildStreamableHandler(db, 30*time.Second)
-			t.Cleanup(handler.Close)
-
-			if handler.sessionTimeout != tt.want {
-				t.Fatalf("BuildStreamableHandler sessionTimeout = %v, want %v (env=%q)",
-					handler.sessionTimeout, tt.want, tt.env)
-			}
-		})
-	}
-}
-
-func TestStreamableHandlerPrunesStaleSessionLogins(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
-
-	handler.rememberSession("stale-session", "alice")
-	handler.pruneSessionLogins()
-
-	if got := handlerSessionLoginCount(handler); got != 0 {
-		t.Fatalf("session login count = %d, want stale session pruned", got)
 	}
 }
 
@@ -295,32 +285,48 @@ func withAuthContext(next http.Handler, tokenLogins map[string]string) http.Hand
 	})
 }
 
-func postMCP(t *testing.T, endpoint, token, sessionID string, body []byte) *http.Response {
+// newProtocolRequest builds a raw JSON-RPC request carrying everything protocol
+// 2026-07-28 requires on the wire: the SEP-2243 standard headers (Mcp-Method,
+// Mcp-Protocol-Version) alongside the usual Accept/Content-Type. The SDK
+// rejects requests whose headers and body disagree, so rpcMethod must match the
+// method in body.
+func newProtocolRequest(t *testing.T, ctx context.Context, endpoint, token, rpcMethod string, body []byte) *http.Request {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+		t.Fatalf("http.NewRequestWithContext() error = %v", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Content-Type", "application/json")
-	if sessionID != "" {
-		req.Header.Set(mcpSessionIDHeader, sessionID)
+	req.Header.Set("Mcp-Protocol-Version", testProtocolVersion20260728)
+	req.Header.Set("Mcp-Method", rpcMethod)
+	return req
+}
+
+// readFirstSSEData returns the payload of the first `data:` line on an SSE
+// stream, skipping event/id fields and keep-alive comment lines.
+func readFirstSSEData(t *testing.T, r io.Reader) []byte {
+	t.Helper()
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if data, ok := strings.CutPrefix(line, "data:"); ok {
+			return []byte(strings.TrimSpace(data))
+		}
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("http.Do() error = %v", err)
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("reading SSE stream error = %v", err)
 	}
-	return resp
+	t.Fatal("SSE stream closed before any data line was received")
+	return nil
 }
 
 func bearerTokenHTTPClient(token string) *http.Client {
 	return &http.Client{
-		Transport: bearerTokenRoundTripper{
-			token: token,
-			base:  http.DefaultTransport,
-		},
+		Transport: bearerTokenRoundTripper{token: token, base: http.DefaultTransport},
 	}
 }
 
@@ -335,102 +341,20 @@ func (rt bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	return rt.base.RoundTrip(req)
 }
 
-func handlerServerSessionCount(handler *StreamableHandler) int {
-	count := 0
-	for range handler.server.Sessions() {
-		count++
-	}
-	return count
-}
-
-
-// nonFlushingResponseWriter wraps http.ResponseWriter without forwarding
-// http.Flusher, so type-asserting for it always fails.
-type nonFlushingResponseWriter struct{ http.ResponseWriter }
-
-// TestStreamableHandlerServeHTTPNonFlusherNotExposed is a regression test for
-// the sessionRecorderFlusher optional-interface contract: when the underlying
-// ResponseWriter does not implement http.Flusher, the writer passed to the
-// inner handler must also not expose http.Flusher.
-func TestStreamableHandlerServeHTTPNonFlusherNotExposed(t *testing.T) {
-	var sawFlusher bool
-	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, sawFlusher = w.(http.Flusher)
-	})
-	h := &StreamableHandler{
-		handler:       fakeInner,
-		sessionLogins: make(map[string]string),
-	}
-	t.Cleanup(h.Close)
-
-	nfw := &nonFlushingResponseWriter{ResponseWriter: httptest.NewRecorder()}
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-
-	h.ServeHTTP(nfw, req)
-
-	if sawFlusher {
-		t.Error("inner handler saw http.Flusher on a writer whose underlying ResponseWriter does not support it")
-	}
-}
-
-// TestSessionRecorderUnwrap verifies that sessionRecorder.Unwrap returns the
-// underlying ResponseWriter, enabling http.ResponseController to traverse the
-// middleware chain and reach optional interfaces on the original writer.
-// sessionRecorderFlusher inherits the same path via embedding.
-func TestSessionRecorderUnwrap(t *testing.T) {
-	rec := httptest.NewRecorder()
-	sr := &sessionRecorder{ResponseWriter: rec}
-	if got := sr.Unwrap(); got != rec {
-		t.Errorf("sessionRecorder.Unwrap() = %v, want underlying ResponseWriter", got)
-	}
-
-	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
-	if got := srf.Unwrap(); got != rec {
-		t.Errorf("sessionRecorderFlusher.Unwrap() = %v, want underlying ResponseWriter", got)
-	}
-}
-
-// post-ServeHTTP once.Do fallback in StreamableHandler.ServeHTTP.
-// A fake inner handler sets Mcp-Session-Id in the response headers and returns
-// without calling Write, WriteHeader, or Flush — exercising the implicit-commit
-// path where net/http would commit the headers on handler return. The test
-// confirms that sessionLogins is populated despite no explicit commit call.
-func TestStreamableHandlerServeHTTPFallbackRegistersSession(t *testing.T) {
-	fakeInner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Sets the session header but intentionally calls no write methods,
-		// simulating the implicit-commit path.
-		w.Header().Set(mcpSessionIDHeader, "implicit-sid")
-	})
-	h := &StreamableHandler{
-		handler:       fakeInner,
-		sessionLogins: make(map[string]string),
-	}
-	t.Cleanup(h.Close)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	ctx := context.WithValue(req.Context(), middleware.ContextKeyLogin, "alice")
-	req = req.WithContext(ctx)
-
-	h.ServeHTTP(rec, req)
-
-	h.mu.Lock()
-	login, registered := h.sessionLogins["implicit-sid"]
-	h.mu.Unlock()
-
-	if !registered {
-		t.Fatal("post-ServeHTTP fallback did not register session for implicit-commit path")
-	}
-	if login != "alice" {
-		t.Fatalf("registered login = %q, want alice", login)
-	}
-}
-
 // TestSubscribeHandlerRejectsLegacyURIScheme is a regression test for the ghost
 // subscription bug: before the fix, copilot-review://watch/... URIs fell through
 // the watchPrefix check and returned nil (success), causing go-sdk to register a
 // subscription that would never receive notifications. The fix returns
 // mcp.ResourceNotFoundError for the legacy scheme.
+//
+// This sends the raw subscriptions/listen JSON-RPC request instead of going
+// through mcp.ClientSession.Subscribe(): under protocol 2026-07-28,
+// ClientSession.Subscribe() (go-sdk v1.7.0) discards the server's JSON-RPC
+// error for this method — verified by wire capture that the server correctly
+// returns HTTP 400 with the ResourceNotFound error while Subscribe() itself
+// returns nil. That is an upstream go-sdk client-side bug, not a review-raven
+// authorization gap; asserting on the raw HTTP response is what actually
+// exercises our SubscribeHandler's security boundary.
 func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
@@ -441,72 +365,23 @@ func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
-	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
-		Endpoint:             httpServer.URL,
-		HTTPClient:           bearerTokenHTTPClient("token-a"),
-		DisableStandaloneSSE: true,
-		MaxRetries:           -1,
-	}, nil)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{` +
+		testNewProtocolMeta + `,"notifications":{"resourceSubscriptions":["copilot-review://watch/abc123"]}}}`)
+	req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "subscriptions/listen", body)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("client.Connect() error = %v", err)
+		t.Fatalf("http.Do() error = %v", err)
 	}
-	t.Cleanup(func() { _ = session.Close() })
+	defer func() { _ = resp.Body.Close() }()
 
-	// Subscribe with legacy URI — expect ResourceNotFound error.
-	err = session.Subscribe(context.Background(), &mcp.SubscribeParams{
-		URI: "copilot-review://watch/abc123",
-	})
-	if err == nil {
-		t.Fatal("Subscribe with legacy URI got success, want ResourceNotFound error")
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "Resource not found") {
-		t.Fatalf("Subscribe error = %q, want to contain \"Resource not found\"", err.Error())
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("subscriptions/listen for legacy URI status = 200, want an error status; body=%s", respBody)
 	}
-}
-
-func handlerSessionLoginCount(handler *StreamableHandler) int {
-	handler.mu.Lock()
-	defer handler.mu.Unlock()
-	return len(handler.sessionLogins)
-}
-
-// TestSessionRecorderFlushRegistersSession verifies that sessionRecorderFlusher.Flush
-// calls rememberSession before forwarding to the underlying http.Flusher,
-// covering the race path where the SDK sets Mcp-Session-Id and flushes headers
-// without a prior Write or WriteHeader call.
-func TestSessionRecorderFlushRegistersSession(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
-
-	rec := httptest.NewRecorder()
-	rec.Header().Set(mcpSessionIDHeader, "flush-session-id")
-
-	sr := &sessionRecorder{ResponseWriter: rec, login: "alice", handler: handler}
-	srf := &sessionRecorderFlusher{sessionRecorder: sr, flusher: rec}
-	srf.Flush()
-
-	handler.mu.Lock()
-	login, registered := handler.sessionLogins["flush-session-id"]
-	handler.mu.Unlock()
-
-	if !registered {
-		t.Fatal("Flush() did not register session via rememberSession")
-	}
-	if login != "alice" {
-		t.Fatalf("Flush() registered login = %q, want alice", login)
-	}
-	if !rec.Flushed {
-		t.Fatal("Flush() did not forward to the underlying http.Flusher")
-	}
-
-	// A second Flush must not double-register (once.Do guarantee).
-	srf.Flush()
-	handler.mu.Lock()
-	count := len(handler.sessionLogins)
-	handler.mu.Unlock()
-	if count != 1 {
-		t.Fatalf("session login count after second Flush = %d, want 1 (once.Do)", count)
+	if !strings.Contains(string(respBody), "Resource not found") {
+		t.Fatalf("subscriptions/listen response = %q, want to contain \"Resource not found\"", respBody)
 	}
 }

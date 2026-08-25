@@ -51,21 +51,19 @@ watch 系ツールは `recommended_next_action` と、必要に応じて `next_p
 - watch state は SQLite に保存されますが、worker 自体は memory-only です。プロセス再起動後の active watch は `STALE` になります。
 - 一覧系は同一 `github_login` の watch だけを返します。
 
-## Stateful Session 基盤（#64）
+## Stateless Streamable HTTP（#111）
 
-#64 以降、`review-raven` の Streamable HTTP は stateless ではなく stateful session として扱います。
+#111（MCP `2026-07-28` 移行、横断 tracker: [thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165)）以降、`review-raven` の Streamable HTTP は stateless です（`StreamableHTTPOptions.Stateless: true`）。
 
-- 初回 initialize で発行された `Mcp-Session-Id` を後続 request で再利用します。
-- MCP server は request ごとに作成されず、プロセス内の長寿命 server が複数 stateful session を保持します。
-- GitHub client は長寿命 server へ閉じ込めず、各 tool request の認証済み header から作成します。
-- `Mcp-Session-Id` は GitHub login と対応付け、別 login から同じ session ID が使われた場合は拒否します。
-- idle session は server 側 timeout で閉じられます。
-- `EventStore` は memory store を使い、future resource notification / SSE replay の土台を用意しています。
+- `Mcp-Session-Id` を発行・参照しません。各 request は per-request の一時 session で処理されます（go-sdk の仕様上、protocol `2026-07-28` の negotiation には stateless が必須 — stateful server は `2025-11-25` へフォールバックします）。
+- MCP server（`*mcp.Server`）自体は単一の長寿命インスタンスのままです。per-request なのは「session」のみで、server 本体や登録済み tool/resource ではありません。
+- GitHub client は従来どおり各 tool request の認証済み header から作成され、session 状態とは無関係です。
+- session と login の紐付けは存在しません。認可境界は per-request の GitHub token 認証（`middleware` 経由）のみです。これにより旧 `sessionLogins` map が防いでいた session hijacking の攻撃面自体が消滅しました — session が無いので奪い取るものがありません。
+- `EventStore` / `Last-Event-ID` による stream resumption は使用しません（`2026-07-28` では非サポート）。
+- GET / DELETE request は `405 Method Not Allowed` を返します（stateless server は standalone SSE stream を開かず、session teardown も受け付けません）。
 
 テスト観点:
 
-- initialize 後の複数 request が同一 stateful session と長寿命 server を再利用すること。
-- 別 GitHub login が既存 `Mcp-Session-Id` を使うと JSON error body 付きの 403 になること。
-- timeout などで server から消えた session の login binding が periodic pruning で消えること。
-- handler shutdown で active session と background watch manager が停止すること。
-- resource notification 追加時は `resources/subscribe` 済み session に `notifications/resources/updated` が届き、通知不可 host では watch status read fallback が維持されること。
+- legacy `copilot-review://watch/...` URI への `subscriptions/listen` は server 側で引き続き拒否されること（`SubscribeHandler` が `ResourceNotFoundError` を返す）— `mcp.ClientSession.Subscribe()` ではなく生の HTTP response で検証する。go-sdk v1.7.0 時点で、client 側の `subscriptionsListen()` はこの method のエラーを握りつぶす（wire capture で確認済み: server は正しく `400` + error を返すが、client は `nil` を返す）。これは review-raven 側の認可漏れではなく go-sdk client 側の既知不具合。
+- handler shutdown で background watch manager が停止すること。
+- `subscriptions/listen` stream への `notifications/resources/updated` 配信と、通知不可 host 向けの watch status read fallback は session モデルの変更による影響を受けないこと。

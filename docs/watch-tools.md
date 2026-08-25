@@ -51,21 +51,19 @@ Watch tools return `recommended_next_action` and, when relevant, `next_poll_seco
 - Watch state is persisted in SQLite, but the worker itself is memory-only. Active watches become `STALE` after a process restart.
 - List operations return only watches belonging to the same `github_login`.
 
-## Stateful Session Foundation (#64)
+## Stateless Streamable HTTP (#111)
 
-Since #64, the Streamable HTTP transport of `review-raven` is treated as stateful, not stateless.
+Since #111 (MCP `2026-07-28` migration, see [thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165)), the Streamable HTTP transport of `review-raven` is stateless: `StreamableHTTPOptions.Stateless: true`.
 
-- The `Mcp-Session-Id` issued on the first `initialize` is reused by subsequent requests.
-- The MCP server is not recreated per request; a long-lived in-process server holds multiple stateful sessions.
-- GitHub clients are not tied to the long-lived server; they are created per tool request from the authenticated request headers.
-- `Mcp-Session-Id` is bound to a GitHub login; requests from a different login using the same session ID are rejected.
-- Idle sessions are closed by the server-side timeout.
-- `EventStore` uses a memory store, providing a foundation for future resource notifications and SSE replay.
+- No `Mcp-Session-Id` is minted or read; each request is served by a temporary per-request session (go-sdk requirement for negotiating protocol `2026-07-28` — stateful servers negotiate down to `2025-11-25`).
+- The MCP server (`*mcp.Server`) is still a single shared long-lived instance; only the *session* is per-request, not the server or its registered tools/resources.
+- GitHub clients continue to be created per tool call from the authenticated request headers, unrelated to session state.
+- There is no session-to-login binding: per-request GitHub token authentication (via `middleware`) is the sole authorization boundary. This also removes the session-hijacking attack surface that the old `sessionLogins` map defended against — with no session to hijack, there is nothing to defend.
+- `EventStore` / `Last-Event-ID` stream resumption is not used: `2026-07-28` does not support it.
+- GET and DELETE requests return `405 Method Not Allowed` (stateless servers do not open a standalone SSE stream or accept session teardown).
 
 Test considerations:
 
-- Multiple requests after `initialize` must reuse the same stateful session and long-lived server.
-- A different GitHub login using an existing `Mcp-Session-Id` must receive a 403 with a JSON error body.
-- Login bindings for sessions that have disappeared from the server must be removed by periodic pruning.
-- Handler shutdown must stop active sessions and the background watch manager.
-- When resource notifications are added, `notifications/resources/updated` must be delivered to sessions with an active `resources/subscribe`, and watch-status read fallback must be maintained for hosts that do not support notifications.
+- `subscriptions/listen` for a legacy `copilot-review://watch/...` URI must still be rejected server-side (`SubscribeHandler` returns `ResourceNotFoundError`) — assert on the raw HTTP response, not `mcp.ClientSession.Subscribe()`. As of go-sdk v1.7.0, the client-side `subscriptionsListen()` silently discards the server's JSON-RPC error for this method (confirmed by wire capture: server returns `400` with the correct error, client returns `nil`). This is an upstream go-sdk client bug, not a review-raven authorization gap.
+- Handler shutdown must stop the background watch manager.
+- `notifications/resources/updated` delivery to `subscriptions/listen` streams and watch-status read fallback for hosts without notification support remain unaffected by the session-model change.

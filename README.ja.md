@@ -16,7 +16,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 - **GraphQL ベースの Copilot review request**。REST `requested_reviewers` が bot actor を黙って無視する問題を回避する
 - **PR レビュースレッド単位の操作**。`PRRT_xxx` ノード ID で reply / resolve / reply+resolve を行う
 - **mcp-gateway** による認証。ゲートウェイが OAuth を処理し、検証済みの identity ヘッダーを注入する
-- **Stateful session**。`Mcp-Session-Id` を GitHub login にバインドし、idle timeout で自動 prune
+- **Stateless Streamable HTTP**（MCP protocol `2026-07-28`）。`Mcp-Session-Id` は発行も参照もせず、各リクエストは mcp-gateway が注入する GitHub token で個別に認可する
 - **SQLite による watch state 永続化**。プロセス再起動後の active watch は `STALE` として観測できる
 
 ## 提供ツール
@@ -77,7 +77,6 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `SQLITE_PATH` | | `/data/review-raven.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
-| `MCP_SESSION_TIMEOUT_MIN` | | `0` | Streamable HTTP セッションの idle timeout（分）。この期間クライアントからの HTTP リクエストが無い場合、セッションは閉じられ、古い `Mcp-Session-Id` でのリクエストは `404 session not found` を返す。既定値 `0` は idle eviction を無効化し、長時間接続のクライアント（Claude Code / IDE / `mcp-gateway`）が #14 の失敗モードに遭遇しないようにしている。トレードオフ: `DELETE` を送らずに消えたクライアントの session はプロセス終了まで残る → メモリ増加を抑えたい場合は正の値（例: 24 時間なら `1440`）を指定する。 |
 
 **非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 
