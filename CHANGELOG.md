@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-26
+
+> **Breaking release.** Clients that still open a session with the `initialize` handshake are refused. Discover the server through `server/discover` on protocol `2026-07-28` instead.
+
 ### Changed
 
 - **Breaking: the deprecated `initialize` handshake is now refused.** review-raven serves MCP protocol `2026-07-28` only, so a POST carrying an `initialize` call is answered with HTTP 400 and JSON-RPC `-32022` (`unsupported protocol version`), whose `data` advertises `supported: ["2026-07-28"]` and echoes the version the client asked for. A batched body is rejected as a whole, so that response carries a null `id` — no single request in the batch owns it. Previously go-sdk answered the handshake and negotiated down to the client's legacy revision — a Codex 0.149.1 A/B run (`mcp_2026_07_28` disabled process-locally) showed review-raven staying `ready` on `2025-06-18` where thread-owl already rejected it, leaving review-raven the last server in the review stack that a pre-SEP-2575 client could still reach. go-sdk exposes no server-side switch for this, so the handshake is gated in front of the SDK handler; the gate matches the modern-only rejection the TS SDK serves thread-owl via `legacy: "reject"`. Clients must discover the server through `server/discover`. Part of the [thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165) cross-repo MCP `2026-07-28` migration. ([Issue #117](https://github.com/scottlz0310/review-raven/issues/117))
@@ -174,6 +178,7 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0
