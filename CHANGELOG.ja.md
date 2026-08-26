@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-26
+
+> **破壊的変更を含むリリースです。** `initialize` handshake でセッションを開く client は拒否されます。protocol `2026-07-28` の `server/discover` で discovery してください。
+
 ### 変更
 
 - **破壊的変更: 非推奨の `initialize` handshake を拒否するようにしました。** review-raven は MCP protocol `2026-07-28` のみを提供するため、`initialize` を含む POST には HTTP 400 と JSON-RPC `-32022`（`unsupported protocol version`）を返します。`data` には `supported: ["2026-07-28"]` と client が要求したバージョンを載せます。batch body は全体を 1 つの応答で拒否するため、その応答の `id` は null になります（batch 内のどの request にも帰属しないため）。従来は go-sdk が handshake に応答し、client の legacy revision へネゴシエートしていました — Codex 0.149.1 の A/B 検証（`mcp_2026_07_28` を process-local に無効化）では、thread-owl が既に拒否している `2025-06-18` に対して review-raven だけが `ready` のままであり、SEP-2575 以前の client が到達できる最後の server として残っていました。go-sdk には server 側の切り替えスイッチが無いため、SDK handler の手前で handshake を遮断します。この拒否契約は、TS SDK の `legacy: "reject"` が thread-owl に提供している modern-only 拒否と同じ形です。client は `server/discover` で discovery してください。[thread-owl#165](https://github.com/scottlz0310/thread-owl/issues/165) の repo 横断 MCP `2026-07-28` 移行の一部です。([Issue #117](https://github.com/scottlz0310/review-raven/issues/117))
@@ -174,6 +178,7 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0
