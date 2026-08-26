@@ -64,11 +64,19 @@ type peekedBody struct {
 	io.Closer
 }
 
+// jsonNull is the JSON-RPC id for a response that answers no single request.
+var jsonNull = json.RawMessage("null")
+
 // legacyInitializeFromBody reports whether body carries an initialize call,
-// returning its JSON-RPC ID and the protocol version it asked for. Anything it
-// cannot parse is left for the SDK to answer.
-func legacyInitializeFromBody(body []byte) (id jsonrpc.ID, requested string, found bool) {
-	for _, raw := range jsonRPCMessages(body) {
+// returning the JSON-RPC id the rejection must carry and the protocol version
+// the call asked for. Anything it cannot parse is left for the SDK to answer.
+//
+// A batched body yields a null id: one response rejects the whole batch, so no
+// single request's id can honestly claim it — JSON-RPC 2.0 requires null
+// wherever the responding id cannot be determined.
+func legacyInitializeFromBody(body []byte) (id json.RawMessage, requested string, found bool) {
+	msgs, batched := jsonRPCMessages(body)
+	for _, raw := range msgs {
 		msg, err := jsonrpc.DecodeMessage(raw)
 		if err != nil {
 			continue
@@ -83,46 +91,70 @@ func legacyInitializeFromBody(body []byte) (id jsonrpc.ID, requested string, fou
 		// A missing or malformed params block still identifies the handshake;
 		// only the version we echo back is lost.
 		_ = json.Unmarshal(req.Params, &params)
-		return req.ID, params.ProtocolVersion, true
+		if batched {
+			return jsonNull, params.ProtocolVersion, true
+		}
+		// ID.Raw is nil, a float64, or a string — all of which marshal, and
+		// nil (a notification) marshals to the null the spec asks for.
+		encoded, _ := json.Marshal(req.ID.Raw())
+		return encoded, params.ProtocolVersion, true
 	}
-	return jsonrpc.ID{}, "", false
+	return nil, "", false
 }
 
 // jsonRPCMessages splits a POST body into its JSON-RPC messages, accepting both
-// the single-message and the batched form.
-func jsonRPCMessages(body []byte) []json.RawMessage {
+// the single-message and the batched form, and reports which form it was.
+func jsonRPCMessages(body []byte) (msgs []json.RawMessage, batched bool) {
 	trimmed := bytes.TrimLeft(body, " \t\r\n")
 	if len(trimmed) == 0 {
-		return nil
+		return nil, false
 	}
 	if trimmed[0] == '[' {
 		var batch []json.RawMessage
 		if err := json.Unmarshal(trimmed, &batch); err != nil {
-			return nil
+			return nil, true
 		}
-		return batch
+		return batch, true
 	}
-	return []json.RawMessage{trimmed}
+	return []json.RawMessage{trimmed}, false
+}
+
+// jsonRPCErrorResponse is written by hand rather than through
+// jsonrpc.EncodeMessage because that encoder omits a null id, and JSON-RPC 2.0
+// requires the member to be present on every response.
+type jsonRPCErrorResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Error   jsonRPCError    `json:"error"`
+}
+
+type jsonRPCError struct {
+	Code    int64           `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 // writeUnsupportedProtocolVersion answers with the SEP-2575
 // UnsupportedProtocolVersionError. HTTP 400 is the status the spec assigns to
 // -32022 on the 2026-07-28 transport, and mcp-gateway forwards it verbatim.
-func writeUnsupportedProtocolVersion(w http.ResponseWriter, id jsonrpc.ID, requested string) {
+// id is the raw JSON-RPC id from legacyInitializeFromBody, which is null
+// rather than empty wherever no single request owns the response.
+func writeUnsupportedProtocolVersion(w http.ResponseWriter, id json.RawMessage, requested string) {
 	message := "unsupported protocol version"
 	if requested != "" {
 		message += ": " + requested
 	}
-	// Every value on this response is a fixed-shape string, so neither marshal
-	// step has a failure mode to handle. go-sdk drops the same error for the
-	// same reason where it builds this error itself.
+	// Every value on this response is a fixed shape, so neither marshal step
+	// has a failure mode to handle. go-sdk drops the same error for the same
+	// reason where it builds this error itself.
 	data, _ := json.Marshal(mcp.UnsupportedProtocolVersionData{
 		Supported: []string{protocolVersion20260728},
 		Requested: requested,
 	})
-	body, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{
-		ID: id,
-		Error: &jsonrpc.Error{
+	body, _ := json.Marshal(jsonRPCErrorResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error: jsonRPCError{
 			Code:    mcp.CodeUnsupportedProtocolVersion,
 			Message: message,
 			Data:    data,

@@ -35,6 +35,8 @@ func TestStreamableHandlerRejectsLegacyInitialize(t *testing.T) {
 		name          string
 		body          string
 		wantRequested string
+		// wantID is the JSON-RPC id the rejection must carry, as raw JSON.
+		wantID string
 	}{
 		{
 			name: "2025-06-18 handshake",
@@ -42,6 +44,7 @@ func TestStreamableHandlerRejectsLegacyInitialize(t *testing.T) {
 				`"protocolVersion":"2025-06-18","capabilities":{},` +
 				`"clientInfo":{"name":"legacy-client","version":"1.0.0"}}}`,
 			wantRequested: "2025-06-18",
+			wantID:        `1`,
 		},
 		{
 			name: "2025-11-25 handshake with a string id",
@@ -49,13 +52,17 @@ func TestStreamableHandlerRejectsLegacyInitialize(t *testing.T) {
 				`"protocolVersion":"2025-11-25","capabilities":{},` +
 				`"clientInfo":{"name":"legacy-client","version":"1.0.0"}}}`,
 			wantRequested: "2025-11-25",
+			wantID:        `"str-id"`,
 		},
 		{
-			name: "batched handshake",
+			// One response rejects the whole batch, so it can claim no single
+			// request's id — JSON-RPC 2.0 requires null there.
+			name: "batched handshake answers with a null id",
 			body: `[{"jsonrpc":"2.0","id":1,"method":"initialize","params":{` +
 				`"protocolVersion":"2025-06-18","capabilities":{},` +
 				`"clientInfo":{"name":"legacy-client","version":"1.0.0"}}}]`,
 			wantRequested: "2025-06-18",
+			wantID:        `null`,
 		},
 	}
 
@@ -75,6 +82,11 @@ func TestStreamableHandlerRejectsLegacyInitialize(t *testing.T) {
 			if resp.StatusCode != http.StatusBadRequest {
 				t.Fatalf("initialize status = %d, want 400; body=%s", resp.StatusCode, respBody)
 			}
+
+			// Decoded as raw members so a missing id is distinguishable from a
+			// null one: the spec requires the member on every response, and a
+			// struct field cannot tell the two apart.
+			assertJSONRPCResponseID(t, respBody, tt.wantID)
 
 			var decoded struct {
 				Error *struct {
@@ -162,7 +174,7 @@ func TestStreamableHandlerForwardsUnclassifiableBodies(t *testing.T) {
 
 // TestStreamableHandlerRejectsLegacyInitializeAmongUndecodableBatchEntries
 // pins that an entry the JSON-RPC decoder rejects does not shadow a handshake
-// later in the same batch.
+// later in the same batch, and that the rejection still carries a null id.
 func TestStreamableHandlerRejectsLegacyInitializeAmongUndecodableBatchEntries(t *testing.T) {
 	db := openServerTestDB(t)
 	handler := BuildStreamableHandler(db, 30*time.Second)
@@ -193,6 +205,31 @@ func TestStreamableHandlerRejectsLegacyInitializeAmongUndecodableBatchEntries(t 
 	}
 	if !strings.Contains(string(respBody), "unsupported protocol version") {
 		t.Fatalf("batched initialize response = %s, want the -32022 rejection", respBody)
+	}
+
+	assertJSONRPCResponseID(t, respBody, "null")
+}
+
+// assertJSONRPCResponseID checks the raw id member of a JSON-RPC response.
+// Decoding into a map rather than a struct is what makes an omitted id
+// distinguishable from a null one — encoding/json gives both the same zero
+// value in a struct field.
+func assertJSONRPCResponseID(t *testing.T, respBody []byte, wantID string) {
+	t.Helper()
+
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(respBody, &members); err != nil {
+		t.Fatalf("decode response error = %v; raw=%s", err, respBody)
+	}
+	if got := string(members["jsonrpc"]); got != `"2.0"` {
+		t.Fatalf("jsonrpc = %s, want \"2.0\"; raw=%s", got, respBody)
+	}
+	id, ok := members["id"]
+	if !ok {
+		t.Fatalf("response omits the id member; raw=%s", respBody)
+	}
+	if string(id) != wantID {
+		t.Fatalf("response id = %s, want %s; raw=%s", id, wantID, respBody)
 	}
 }
 
