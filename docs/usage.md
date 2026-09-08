@@ -7,9 +7,9 @@ This guide covers the basic setup needed to run `review-raven` as an MCP server:
 - Architecture overview (mcp-gateway required)
 - Docker start, stop, and logs
 - Connecting MCP clients via mcp-gateway
-- Mcp-Docker 経由のレビュー対応 skill の配置
+- Review response skill installation via Mcp-Docker
 
-ツール単位の流れは [watch-tools.md](watch-tools.md)、skill の所在と配置は [案内](skills/README.md)を参照してください。
+For the tool-level flow, see [watch-tools.md](watch-tools.md). For skill installation, see section 4 below and the [skill location guide (Japanese)](skills/README.md).
 
 > **mcp-gateway required**: Standalone OAuth is not supported. All traffic must pass through mcp-gateway. Migrating from `copilot-review-mcp`? See [architecture.md — Migration / Compatibility](architecture.md#migration--compatibility).
 
@@ -165,30 +165,30 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 
 When the client first connects, mcp-gateway handles the OAuth authorization flow. Sign in with GitHub.
 
-## 4. レビュー対応 skill を配置する
+## 4. Install the review response skill
 
-`review-raven-thread-owl-cycle` の正本は [Mcp-Docker の SKILL.md](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md) です。収蔵・配置は Mcp-Docker が管理します。
+The canonical `review-raven-thread-owl-cycle` skill is [Mcp-Docker's SKILL.md (Japanese)](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md). Mcp-Docker manages its source and installation.
 
-[Mcp-Docker のリリース](https://github.com/scottlz0310/Mcp-Docker/releases)から skill サブコマンドを備えた v2.18.0 以降を導入し、次を実行します。
+Install v2.18.0 or later from [Mcp-Docker releases](https://github.com/scottlz0310/Mcp-Docker/releases), which provides the skill subcommand, then run:
 
 ```shell
 mcp-docker skill install
 mcp-docker skill status
 ```
 
-配置対象は Claude / Copilot / Codex / Antigravity CLI です。対象の絞り込みや更新方法は [Mcp-Docker の利用案内](https://github.com/scottlz0310/Mcp-Docker#readme)を参照してください。手動配置済みの skill は管理外として扱われ、上書き時に確認されます。
+Supported clients are Claude, Copilot, Codex, and Antigravity CLI. See the [Mcp-Docker guide (Japanese)](https://github.com/scottlz0310/Mcp-Docker#readme) for filtering targets and updating skills. Manually installed copies are treated as unmanaged and require confirmation before overwriting.
 
-このリポジトリの skill テンプレートは廃止しました。`review-raven-thread-owl-cycle` は日本語の正本に統一し、英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版は削除しました。Copilot 用 MCP ツールの利用手順は[ツールドキュメント](watch-tools.md)を参照してください。
+Skill templates in this repository have been retired. `review-raven-thread-owl-cycle` now uses the Japanese canonical source only; its English version and both language versions of the unused Copilot-only `pr-review-cycle` have been removed. For the Copilot MCP tools, see the [tool documentation](watch-tools.md).
 
-## 5. 基本的なレビュー対応
+## 5. Basic review response workflow
 
-thread-owl のレビューコメントを受けた実装側エージェントへ、対象 PR を指定して依頼します。
+After thread-owl posts review comments, ask the implementation agent to address them, specifying the target PR:
 
 ```text
 $review-raven-thread-owl-cycle owner/repo#123
 ```
 
-必要な接続と修正・返信・再レビュー依頼の手順は、[skill の正本](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md)に従ってください。独立 reviewer の起動とマージは別の操作であり、マージにはユーザーの明示許可が必要です。
+Follow the [canonical skill (Japanese)](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md) for required connections, fixes, replies, and re-review requests. Starting an independent reviewer and merging are separate operations; merging requires explicit user approval.
 
 ## Troubleshooting
 

@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 修正
+
+- stale-guard バグ報告の旧ディレクトリを参照するリンク5件を、現行の `internal/` 配下へ修正しました。
+
 ### 削除
 
 - skill の収蔵・配置を Mcp-Docker に一本化し、`review-raven-thread-owl-cycle` 日英版を削除しました。英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版を廃止し、利用案内を Mcp-Docker の正本・配置手順へ更新しました。([Issue #122](https://github.com/scottlz0310/review-raven/issues/122))

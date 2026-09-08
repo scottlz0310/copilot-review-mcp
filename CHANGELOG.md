@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 削除
+### Removed
 
-- skill の収蔵・配置を Mcp-Docker に一本化し、`review-raven-thread-owl-cycle` 日英版を削除しました。英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版を廃止し、利用案内を Mcp-Docker の正本・配置手順へ更新しました。([Issue #122](https://github.com/scottlz0310/review-raven/issues/122))
+- Removed both language versions of `review-raven-thread-owl-cycle` from this repository, consolidating skill source and installation in Mcp-Docker. Retired the English skill and both language versions of the unused Copilot-only `pr-review-cycle`, and updated the guides to reference Mcp-Docker's canonical source and installation instructions. ([Issue #122](https://github.com/scottlz0310/review-raven/issues/122))
+
+### Fixed
+
+- Corrected five outdated source links in the stale-guard bug report to point to the current `internal/` directory.
 
 ## [0.3.0] - 2026-08-26
 
