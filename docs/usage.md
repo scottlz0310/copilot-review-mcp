@@ -7,9 +7,9 @@ This guide covers the basic setup needed to run `review-raven` as an MCP server:
 - Architecture overview (mcp-gateway required)
 - Docker start, stop, and logs
 - Connecting MCP clients via mcp-gateway
-- `pr-review-cycle` skill installation
+- Mcp-Docker 経由のレビュー対応 skill の配置
 
-For the tool-level flow, see [watch-tools.md](watch-tools.md). For the skill template itself, see [skills/pr-review-cycle.md](skills/pr-review-cycle.md).
+ツール単位の流れは [watch-tools.md](watch-tools.md)、skill の所在と配置は [案内](skills/README.md)を参照してください。
 
 > **mcp-gateway required**: Standalone OAuth is not supported. All traffic must pass through mcp-gateway. Migrating from `copilot-review-mcp`? See [architecture.md — Migration / Compatibility](architecture.md#migration--compatibility).
 
@@ -165,72 +165,30 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 
 When the client first connects, mcp-gateway handles the OAuth authorization flow. Sign in with GitHub.
 
-## 4. Install the `pr-review-cycle` skill
+## 4. レビュー対応 skill を配置する
 
-The repository contains skill templates, but they must be copied into your AI agent's local skill directory before use.
+`review-raven-thread-owl-cycle` の正本は [Mcp-Docker の SKILL.md](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md) です。収蔵・配置は Mcp-Docker が管理します。
 
-### Codex
+[Mcp-Docker のリリース](https://github.com/scottlz0310/Mcp-Docker/releases)から skill サブコマンドを備えた v2.18.0 以降を導入し、次を実行します。
 
-PowerShell:
-
-```powershell
-$skillDir = "$env:USERPROFILE\.codex\skills\pr-review-cycle"
-New-Item -ItemType Directory -Force $skillDir
-Copy-Item docs\skills\pr-review-cycle.md "$skillDir\SKILL.md"
+```shell
+mcp-docker skill install
+mcp-docker skill status
 ```
 
-POSIX shell:
+配置対象は Claude / Copilot / Codex / Antigravity CLI です。対象の絞り込みや更新方法は [Mcp-Docker の利用案内](https://github.com/scottlz0310/Mcp-Docker#readme)を参照してください。手動配置済みの skill は管理外として扱われ、上書き時に確認されます。
 
-```bash
-mkdir -p ~/.codex/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.md ~/.codex/skills/pr-review-cycle/SKILL.md
-```
+このリポジトリの skill テンプレートは廃止しました。`review-raven-thread-owl-cycle` は日本語の正本に統一し、英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版は削除しました。Copilot 用 MCP ツールの利用手順は[ツールドキュメント](watch-tools.md)を参照してください。
 
-### Claude-style skill directory
+## 5. 基本的なレビュー対応
 
-```bash
-mkdir -p ~/.claude/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-Use the Japanese template if preferred:
-
-```bash
-cp docs/skills/pr-review-cycle.ja.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-After copying, edit the placeholders in the skill if your client exposes different tool prefixes:
-
-| Placeholder | Meaning |
-|---|---|
-| `{CRM}` | `review-raven` tools |
-| `{GH}` | GitHub MCP tools used for comments, CI, and PR operations |
-
-## 5. Basic review-cycle usage
-
-Prerequisites:
-
-- `review-raven` is running and accessible via mcp-gateway.
-- A GitHub MCP server or GitHub connector is also available.
-- The current repository has an open PR.
-
-Typical instruction to the agent:
+thread-owl のレビューコメントを受けた実装側エージェントへ、対象 PR を指定して依頼します。
 
 ```text
-$pr-review-cycle
+$review-raven-thread-owl-cycle owner/repo#123
 ```
 
-The skill should:
-
-1. Check or request a review.
-2. Wait for completion with async watch.
-3. Fetch review threads.
-4. Classify comments.
-5. Apply accepted changes.
-6. Reply and resolve threads when remote side effects are allowed.
-7. Check CI and coverage.
-
-Merging remains a separate explicit user decision.
+必要な接続と修正・返信・再レビュー依頼の手順は、[skill の正本](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md)に従ってください。独立 reviewer の起動とマージは別の操作であり、マージにはユーザーの明示許可が必要です。
 
 ## Troubleshooting
 

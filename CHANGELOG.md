@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 削除
+
+- skill の収蔵・配置を Mcp-Docker に一本化し、`review-raven-thread-owl-cycle` 日英版を削除しました。英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版を廃止し、利用案内を Mcp-Docker の正本・配置手順へ更新しました。([Issue #122](https://github.com/scottlz0310/review-raven/issues/122))
+
 ## [0.3.0] - 2026-08-26
 
 > **Breaking release.** Clients that still open a session with the `initialize` handshake are refused. Discover the server through `server/discover` on protocol `2026-07-28` instead.

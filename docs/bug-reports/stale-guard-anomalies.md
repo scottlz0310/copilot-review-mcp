@@ -240,7 +240,7 @@ nil のときはタイムスタンプ比較にフォールバックする（後�
 **Option 3（最小修正）: スキル側のワークアラウンド**
 
 Phase 0 で `NOT_REQUESTED` が返った場合、`request_copilot_review` を呼ぶ前に GitHub のレビューリスト（`{GH}:get_pull_request_reviews`）を直接確認し、  
-完了済みレビューがあれば Phase 2 に移行する。本修正が実装されるまでのワークアラウンドとして `docs/skills/pr-review-cycle.md` に記載する。
+完了済みレビューがあれば Phase 2 に移行する。当時のワークアラウンドは旧 `pr-review-cycle` テンプレートに記載していたが、同テンプレートは未使用のため #122 で廃止した。[現在の skill 案内](../skills/README.md)を参照。
 
 ### Bug C への修正候補
 

@@ -7,9 +7,9 @@
 - アーキテクチャ概要（mcp-gateway 必須）
 - Docker コンテナの起動、終了、ログ確認
 - mcp-gateway 経由の MCP クライアント接続
-- `pr-review-cycle` skill の配置方法
+- Mcp-Docker 経由のレビュー対応 skill の配置
 
-ツール単位の流れは [watch-tools.ja.md](watch-tools.ja.md)、skill テンプレート本体は [skills/pr-review-cycle.ja.md](skills/pr-review-cycle.ja.md) を参照。
+ツール単位の流れは [watch-tools.ja.md](watch-tools.ja.md)、skill の所在と配置は [案内](skills/README.md)を参照してください。
 
 > **mcp-gateway 必須**: スタンドアロン OAuth は非対応です。すべてのトラフィックは mcp-gateway を経由する必要があります。`copilot-review-mcp` からの移行については [architecture.ja.md — Migration / 互換性](architecture.ja.md#migration--互換性) を参照。
 
@@ -165,72 +165,30 @@ mcp-gateway の URL をクライアントに登録する:
 
 初回接続時に mcp-gateway が OAuth 認可フローを処理する。GitHub にログインして認可する。
 
-## 4. `pr-review-cycle` skill を配置する
+## 4. レビュー対応 skill を配置する
 
-このリポジトリには skill テンプレートが入っているが、使う前に AI エージェント側のローカル skill ディレクトリへコピーする。
+`review-raven-thread-owl-cycle` の正本は [Mcp-Docker の SKILL.md](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md) です。収蔵・配置は Mcp-Docker が管理します。
 
-### Codex
+[Mcp-Docker のリリース](https://github.com/scottlz0310/Mcp-Docker/releases)から skill サブコマンドを備えた v2.18.0 以降を導入し、次を実行します。
 
-PowerShell:
-
-```powershell
-$skillDir = "$env:USERPROFILE\.codex\skills\pr-review-cycle"
-New-Item -ItemType Directory -Force $skillDir
-Copy-Item docs\skills\pr-review-cycle.ja.md "$skillDir\SKILL.md"
+```shell
+mcp-docker skill install
+mcp-docker skill status
 ```
 
-POSIX shell:
+配置対象は Claude / Copilot / Codex / Antigravity CLI です。対象の絞り込みや更新方法は [Mcp-Docker の利用案内](https://github.com/scottlz0310/Mcp-Docker#readme)を参照してください。手動配置済みの skill は管理外として扱われ、上書き時に確認されます。
 
-```bash
-mkdir -p ~/.codex/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.ja.md ~/.codex/skills/pr-review-cycle/SKILL.md
-```
+このリポジトリの skill テンプレートは廃止しました。`review-raven-thread-owl-cycle` は日本語の正本に統一し、英語版と未使用の Copilot 専用 `pr-review-cycle` 日英版は削除しました。Copilot 用 MCP ツールの利用手順は[ツールドキュメント](watch-tools.ja.md)を参照してください。
 
-### Claude 系の skill ディレクトリ
+## 5. 基本的なレビュー対応
 
-```bash
-mkdir -p ~/.claude/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.ja.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-英語版を使う場合:
-
-```bash
-cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-コピー後、利用中のクライアントで tool prefix が異なる場合は skill 内のプレースホルダーを修正する。
-
-| プレースホルダー | 意味 |
-|---|---|
-| `{CRM}` | `review-raven` のツール |
-| `{GH}` | コメント、CI、PR 操作に使う GitHub MCP ツール |
-
-## 5. 基本的な review cycle の使い方
-
-前提:
-
-- `review-raven` が起動し、mcp-gateway 経由で接続できる。
-- GitHub MCP サーバーまたは GitHub connector も利用できる。
-- 対象リポジトリに open PR がある。
-
-AI エージェントへの典型的な指示:
+thread-owl のレビューコメントを受けた実装側エージェントへ、対象 PR を指定して依頼します。
 
 ```text
-$pr-review-cycle
+$review-raven-thread-owl-cycle owner/repo#123
 ```
 
-skill は以下を行う。
-
-1. レビューの状態確認または依頼
-2. async watch による完了待機
-3. review thread の取得
-4. コメント分類
-5. accepted な修正の実装
-6. remote side effect が許可されている場合の返信・resolve
-7. CI と coverage の確認
-
-マージは、ユーザーが明示的に許可した場合だけ別途行う。
+必要な接続と修正・返信・再レビュー依頼の手順は、[skill の正本](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md)に従ってください。独立 reviewer の起動とマージは別の操作であり、マージにはユーザーの明示許可が必要です。
 
 ## トラブルシュート
 
