@@ -2,7 +2,7 @@
 
 **作成日**: 2026-04-23  
 **発見契機**: PR #78 (`docs/pr-review-skill-template`) にて `pr-review-cycle` スキルを動作検証した際に観測  
-**対象サービス**: `services/review-raven/`  
+**対象サービス**: `review-raven`（現行リポジトリのルート）
 **関連ソース**: `internal/github/client.go`, `internal/watch/manager.go`, `internal/tools/status.go`, `internal/tools/request.go`, `internal/tools/cycle.go`
 
 ---
@@ -240,7 +240,7 @@ nil のときはタイムスタンプ比較にフォールバックする（後�
 **Option 3（最小修正）: スキル側のワークアラウンド**
 
 Phase 0 で `NOT_REQUESTED` が返った場合、`request_copilot_review` を呼ぶ前に GitHub のレビューリスト（`{GH}:get_pull_request_reviews`）を直接確認し、  
-完了済みレビューがあれば Phase 2 に移行する。本修正が実装されるまでのワークアラウンドとして `docs/skills/pr-review-cycle.md` に記載する。
+完了済みレビューがあれば Phase 2 に移行する。当時のワークアラウンドは旧 `pr-review-cycle` テンプレートに記載していたが、同テンプレートは未使用のため #122 で廃止した。[現在の skill 案内](../skills/README.md)を参照。
 
 ### Bug C への修正候補
 
@@ -260,11 +260,11 @@ Phase 0 で `NOT_REQUESTED` が返った場合、`request_copilot_review` を呼
 
 | ファイル | 関連度 |
 |---|---|
-| [services/review-raven/internal/tools/request.go](../../services/review-raven/internal/tools/request.go) | Bug B の直接原因 (`db.Insert` のタイミング) |
-| [services/review-raven/internal/github/client.go](../../services/review-raven/internal/github/client.go) | Bug A・B (`GetReviewData`, `DeriveStatusWithThreshold`) |
-| [services/review-raven/internal/watch/manager.go](../../services/review-raven/internal/watch/manager.go) | Bug B のウォッチワーカー側 (`pollOnce` L603–L700) |
-| [services/review-raven/internal/tools/cycle.go](../../services/review-raven/internal/tools/cycle.go) | Bug C (`GetReviewThreads` 直後の伝播遅延) |
-| [services/review-raven/internal/tools/status.go](../../services/review-raven/internal/tools/status.go) | Bug A の呼び出し元 |
+| [internal/tools/request.go](../../internal/tools/request.go) | Bug B の直接原因 (`db.Insert` のタイミング) |
+| [internal/github/client.go](../../internal/github/client.go) | Bug A・B (`GetReviewData`, `DeriveStatusWithThreshold`) |
+| [internal/watch/manager.go](../../internal/watch/manager.go) | Bug B のウォッチワーカー側 (`pollOnce`、行番号は調査当時のもの) |
+| [internal/tools/cycle.go](../../internal/tools/cycle.go) | Bug C (`GetReviewThreads` 直後の伝播遅延) |
+| [internal/tools/status.go](../../internal/tools/status.go) | Bug A の呼び出し元 |
 
 ---
 

@@ -7,9 +7,9 @@ This guide covers the basic setup needed to run `review-raven` as an MCP server:
 - Architecture overview (mcp-gateway required)
 - Docker start, stop, and logs
 - Connecting MCP clients via mcp-gateway
-- `pr-review-cycle` skill installation
+- Review response skill installation via Mcp-Docker
 
-For the tool-level flow, see [watch-tools.md](watch-tools.md). For the skill template itself, see [skills/pr-review-cycle.md](skills/pr-review-cycle.md).
+For the tool-level flow, see [watch-tools.md](watch-tools.md). For skill installation, see section 4 below and the [skill location guide (Japanese)](skills/README.md).
 
 > **mcp-gateway required**: Standalone OAuth is not supported. All traffic must pass through mcp-gateway. Migrating from `copilot-review-mcp`? See [architecture.md — Migration / Compatibility](architecture.md#migration--compatibility).
 
@@ -165,72 +165,30 @@ Use [mcp-remote](https://github.com/geelen/mcp-remote) as a bridge:
 
 When the client first connects, mcp-gateway handles the OAuth authorization flow. Sign in with GitHub.
 
-## 4. Install the `pr-review-cycle` skill
+## 4. Install the review response skill
 
-The repository contains skill templates, but they must be copied into your AI agent's local skill directory before use.
+The canonical `review-raven-thread-owl-cycle` skill is [Mcp-Docker's SKILL.md (Japanese)](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md). Mcp-Docker manages its source and installation.
 
-### Codex
+Install v2.18.0 or later from [Mcp-Docker releases](https://github.com/scottlz0310/Mcp-Docker/releases), which provides the skill subcommand, then run:
 
-PowerShell:
-
-```powershell
-$skillDir = "$env:USERPROFILE\.codex\skills\pr-review-cycle"
-New-Item -ItemType Directory -Force $skillDir
-Copy-Item docs\skills\pr-review-cycle.md "$skillDir\SKILL.md"
+```shell
+mcp-docker skill install
+mcp-docker skill status
 ```
 
-POSIX shell:
+Supported clients are Claude, Copilot, Codex, and Antigravity CLI. See the [Mcp-Docker guide (Japanese)](https://github.com/scottlz0310/Mcp-Docker#readme) for filtering targets and updating skills. Manually installed copies are treated as unmanaged and require confirmation before overwriting.
 
-```bash
-mkdir -p ~/.codex/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.md ~/.codex/skills/pr-review-cycle/SKILL.md
-```
+Skill templates in this repository have been retired. `review-raven-thread-owl-cycle` now uses the Japanese canonical source only; its English version and both language versions of the unused Copilot-only `pr-review-cycle` have been removed. For the Copilot MCP tools, see the [tool documentation](watch-tools.md).
 
-### Claude-style skill directory
+## 5. Basic review response workflow
 
-```bash
-mkdir -p ~/.claude/skills/pr-review-cycle
-cp docs/skills/pr-review-cycle.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-Use the Japanese template if preferred:
-
-```bash
-cp docs/skills/pr-review-cycle.ja.md ~/.claude/skills/pr-review-cycle/SKILL.md
-```
-
-After copying, edit the placeholders in the skill if your client exposes different tool prefixes:
-
-| Placeholder | Meaning |
-|---|---|
-| `{CRM}` | `review-raven` tools |
-| `{GH}` | GitHub MCP tools used for comments, CI, and PR operations |
-
-## 5. Basic review-cycle usage
-
-Prerequisites:
-
-- `review-raven` is running and accessible via mcp-gateway.
-- A GitHub MCP server or GitHub connector is also available.
-- The current repository has an open PR.
-
-Typical instruction to the agent:
+After thread-owl posts review comments, ask the implementation agent to address them, specifying the target PR:
 
 ```text
-$pr-review-cycle
+$review-raven-thread-owl-cycle owner/repo#123
 ```
 
-The skill should:
-
-1. Check or request a review.
-2. Wait for completion with async watch.
-3. Fetch review threads.
-4. Classify comments.
-5. Apply accepted changes.
-6. Reply and resolve threads when remote side effects are allowed.
-7. Check CI and coverage.
-
-Merging remains a separate explicit user decision.
+Follow the [canonical skill (Japanese)](https://github.com/scottlz0310/Mcp-Docker/blob/main/skills/review-raven-thread-owl-cycle/SKILL.md) for required connections, fixes, replies, and re-review requests. Starting an independent reviewer and merging are separate operations; merging requires explicit user approval.
 
 ## Troubleshooting
 

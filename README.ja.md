@@ -37,7 +37,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 
-セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [docs/skills/pr-review-cycle.ja.md](docs/skills/pr-review-cycle.ja.md) を参照。アーキテクチャおよび Thread Owl・mcp-resource-subscriber との責務境界は [docs/architecture.ja.md](docs/architecture.ja.md) を参照。
+セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [skill の所在・配置案内](docs/skills/README.md) を参照。アーキテクチャおよび Thread Owl・mcp-resource-subscriber との責務境界は [docs/architecture.ja.md](docs/architecture.ja.md) を参照。
 
 ## クイックスタート（Docker + mcp-gateway）
 
